@@ -649,19 +649,29 @@ def _dashboard_snapshot():
     now = datetime.now(timezone.utc).astimezone(cairo)
     start = now.replace(hour=0, minute=0, second=0, microsecond=0)
     end = start + timedelta(days=1)
+    invoice_fields = "id,invoice_number,customer_name_snapshot,customer_phone_snapshot,status,total_amount,received_at"
     invoices = supabase_rows("invoices", {
-        "select":"id,invoice_number,customer_name_snapshot,customer_phone_snapshot,status,total_amount,received_at",
-        "branch_id":f"eq.{branch_id}", "received_at":f"gte.{start.isoformat()}",
-        "order":"received_at.desc", "limit":"500"})
-    counts = {"received":0,"in_progress":0,"ready":0,"delivered":0}
-    for row in invoices:
+        "select":invoice_fields,"branch_id":f"eq.{branch_id}",
+        "received_at":f"gte.{start.isoformat()}","received_at.lt":end.isoformat(),
+        "order":"received_at.desc","limit":"500"})
+    workflow = supabase_rows("invoices", {
+        "select":"id,status","branch_id":f"eq.{branch_id}",
+        "status":"in.(received,in_progress,ready)","limit":"1000"})
+    delivered_today = supabase_rows("invoices", {
+        "select":"id","branch_id":f"eq.{branch_id}","status":"eq.delivered",
+        "delivered_at":f"gte.{start.isoformat()}","delivered_at.lt":end.isoformat(),"limit":"500"})
+    recent = supabase_rows("invoices", {
+        "select":invoice_fields,"branch_id":f"eq.{branch_id}",
+        "order":"received_at.desc","limit":"5"})
+    counts = {"received":0,"in_progress":0,"ready":0}
+    for row in workflow:
         if row.get("status") in counts: counts[row["status"]] += 1
     sales = sum(Decimal(str(x.get("total_amount") or "0")) for x in invoices if x.get("status") != "cancelled")
     cash = supabase_request("POST","rpc/get_laundry_cash_flow",payload={"p_from":start.isoformat(),"p_to":end.isoformat()})
     return {"date_label":now.strftime("%A, %d %B"),"sales":float(sales),"orders":len(invoices),
-        "open":counts["received"],"in_progress":counts["in_progress"],"ready":counts["ready"],"completed":counts["delivered"],
+        "open":counts["received"],"in_progress":counts["in_progress"],"ready":counts["ready"],"completed":len(delivered_today),
         "cash_in":float((cash or {}).get("cash_in") or 0),"cash_out":float((cash or {}).get("cash_out") or 0),
-        "net_cash":float((cash or {}).get("net_cash") or 0),"recent":invoices[:5]}
+        "net_cash":float((cash or {}).get("net_cash") or 0),"recent":recent}
 
 
 @app.get("/")
