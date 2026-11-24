@@ -1,6 +1,11 @@
 {% extends 'base.html' %}{% block title %}Invoices | OT Laundry{% endblock %}
 {% block content %}
 <div class="heading-row"><div><p class="eyebrow">INVOICE REGISTER</p><h1>Invoice History</h1><p class="muted">The latest 100 invoices recorded in this branch.</p></div><a class="btn primary" href="/cashier">＋ New Invoice</a></div>
+<form method="get" class="orders-search panel">
+<input name="q" value="{{ search }}" placeholder="Search order number, customer name, or phone" aria-label="Search orders">
+<select name="status"><option value="">All statuses</option><option value="received" {% if selected_status=='received' %}selected{% endif %}>Open</option><option value="in_progress" {% if selected_status=='in_progress' %}selected{% endif %}>In Progress</option><option value="ready" {% if selected_status=='ready' %}selected{% endif %}>Ready</option><option value="delivered" {% if selected_status=='delivered' %}selected{% endif %}>Completed</option><option value="cancelled" {% if selected_status=='cancelled' %}selected{% endif %}>Cancelled</option></select>
+<button class="btn primary">Search</button><a class="btn secondary" href="/invoices">Clear</a>
+</form>
 <div class="panel table-panel">
 {% if invoices %}
 <div class="table-wrap"><table class="data-table"><thead><tr><th>Invoice Number</th><th>Customer</th><th>Date</th><th>Status</th><th>Total</th><th></th></tr></thead><tbody>
