@@ -17,7 +17,6 @@
         <a href="/catalog" class="{% if request.path == '/catalog' %}active{% endif %}">⚙ <span>Catalog & Services</span></a>
         <a href="/finance" class="{% if request.path.startswith('/finance') %}active{% endif %}">▤ <span>Cash & Expenses</span></a>
         <a href="/reports" class="{% if request.path.startswith('/reports') %}active{% endif %}">▥ <span>Reports</span></a>
-        <a href="/hr" class="{% if request.path.startswith('/hr') %}active{% endif %}">♙ <span>Human Resources</span></a>
         <a href="/users" class="{% if request.path == '/users' %}active{% endif %}">♙ <span>Users</span></a>
       </nav>
       <div class="side-bottom"><div class="user-mini"><span class="avatar">{{ current_profile.full_name[:1] }}</span><span><b>{{ current_profile.full_name }}</b><small>{{ current_profile.username }}</small></span></div><a class="logout" href="/logout">Log out ←</a></div>
