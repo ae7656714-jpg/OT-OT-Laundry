@@ -387,8 +387,13 @@ def catalog():
                 supabase_request("POST","garment_categories",payload=payload,prefer="return=minimal")
             elif action == "garment":
                 payload = {"branch_id":branch_id,"category_id":request.form.get("category_id"),"name":request.form.get("name","").strip(),"name_en":request.form.get("name_en","").strip() or None,"icon_key":request.form.get("icon_key","laundry"),"is_active":True}
-                if not payload["category_id"] or not payload["name"]: raise ValueError("اختار القسم واكتب اسم القطعة.")
-                supabase_request("POST","garment_types",payload=payload,prefer="return=minimal")
+                service_id = request.form.get("service_id")
+                price = Decimal(request.form.get("price","0").strip())
+                if not payload["category_id"] or not payload["name"] or not service_id: raise ValueError("اختار القسم والخدمة واكتب اسم القطعة.")
+                if not price.is_finite() or price <= 0: raise ValueError("أدخل سعرًا أكبر من صفر.")
+                created = supabase_request("POST","garment_types",payload=payload,prefer="return=representation")
+                if not isinstance(created,list) or not created: raise RuntimeError("ITEM_CREATE_FAILED")
+                supabase_request("POST","garment_services",payload={"branch_id":branch_id,"garment_type_id":created[0]["id"],"service_id":service_id,"default_price":str(price),"is_available":True},prefer="return=minimal")
             elif action == "service":
                 payload = {"branch_id":branch_id,"name":request.form.get("name","").strip(),"name_en":request.form.get("name_en","").strip() or None,"is_active":True}
                 if not payload["name"]: raise ValueError("اكتب اسم الخدمة.")
@@ -423,10 +428,10 @@ def catalog():
             flash("تعذر الحفظ. تأكد من صلاحية إدارة الأصناف وأن البيانات غير مكررة.", "error")
         return redirect(url_for("catalog"))
     try:
-        categories=supabase_rows("garment_categories",{"select":"id,name,name_en,sort_order,is_active","branch_id":f"eq.{branch_id}","order":"sort_order.asc,name.asc"})
-        garments=supabase_rows("garment_types",{"select":"id,name,name_en,category_id,is_active,icon_key","branch_id":f"eq.{branch_id}","order":"name.asc"})
-        services=supabase_rows("services",{"select":"id,name,name_en,is_active","branch_id":f"eq.{branch_id}","order":"name.asc"})
-        combos=supabase_rows("garment_services",{"select":"id,garment_type_id,service_id,default_price,is_available","branch_id":f"eq.{branch_id}"})
+        categories=supabase_rows("garment_categories",{"select":"id,name,name_en,sort_order,is_active","branch_id":f"eq.{branch_id}","is_active":"eq.true","order":"sort_order.asc,name.asc"})
+        garments=supabase_rows("garment_types",{"select":"id,name,name_en,category_id,is_active,icon_key","branch_id":f"eq.{branch_id}","is_active":"eq.true","order":"name.asc"})
+        services=supabase_rows("services",{"select":"id,name,name_en,is_active","branch_id":f"eq.{branch_id}","is_active":"eq.true","order":"name.asc"})
+        combos=supabase_rows("garment_services",{"select":"id,garment_type_id,service_id,default_price,is_available","branch_id":f"eq.{branch_id}","is_available":"eq.true"})
         cash_accounts=supabase_rows("cash_accounts",{"select":"id,code,name,account_type,is_active","branch_id":f"eq.{branch_id}","order":"name.asc"})
     except RuntimeError as exc:
         if str(exc)=="SESSION_EXPIRED": return redirect(url_for("logout"))
