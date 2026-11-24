@@ -12,6 +12,7 @@ import hashlib
 import base64
 from pathlib import Path
 from datetime import date, timedelta, datetime, timezone
+from zoneinfo import ZoneInfo
 from decimal import Decimal, InvalidOperation
 from functools import wraps
 
@@ -633,11 +634,56 @@ def api_create_invoice():
         return {"error":"INVOICE_CREATE_FAILED","message":"تعذر حفظ الفاتورة. راجع الأصناف والخدمات والصلاحيات ثم حاول مرة أخرى."}, 502
 
 
+def _dashboard_snapshot():
+    profile = current_profile() or {}
+    branch_id = profile.get("branch_id")
+    if not branch_id: raise RuntimeError("BRANCH_REQUIRED")
+    cairo = ZoneInfo("Africa/Cairo")
+    now = datetime.now(timezone.utc).astimezone(cairo)
+    start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    end = start + timedelta(days=1)
+    invoices = supabase_rows("invoices", {
+        "select":"id,invoice_number,customer_name_snapshot,customer_phone_snapshot,status,total_amount,received_at",
+        "branch_id":f"eq.{branch_id}", "received_at":f"gte.{start.isoformat()}",
+        "order":"received_at.desc", "limit":"500"})
+    counts = {"received":0,"in_progress":0,"ready":0,"delivered":0}
+    for row in invoices:
+        if row.get("status") in counts: counts[row["status"]] += 1
+    sales = sum(Decimal(str(x.get("total_amount") or "0")) for x in invoices if x.get("status") != "cancelled")
+    cash = supabase_request("POST","rpc/get_laundry_cash_flow",payload={"p_from":start.isoformat(),"p_to":end.isoformat()})
+    return {"date_label":now.strftime("%A, %d %B"),"sales":float(sales),"orders":len(invoices),
+        "open":counts["received"],"in_progress":counts["in_progress"],"ready":counts["ready"],"completed":counts["delivered"],
+        "cash_in":float((cash or {}).get("cash_in") or 0),"cash_out":float((cash or {}).get("cash_out") or 0),
+        "net_cash":float((cash or {}).get("net_cash") or 0),"recent":invoices[:5]}
+
+
 @app.get("/")
 @login_required
 def dashboard():
     profile = current_profile() or {}
-    return render_template("dashboard.html", profile=profile)
+    try:
+        snapshot = _dashboard_snapshot()
+    except RuntimeError as exc:
+        if str(exc) == "SESSION_EXPIRED": return redirect(url_for("logout"))
+        if "FORBIDDEN" in str(exc) or "42501" in str(exc): abort(403)
+        abort(502, description="تعذر تحميل ملخص اليوم.")
+    return render_template("dashboard.html", profile=profile, snapshot=snapshot)
+
+
+@app.get("/api/dashboard-snapshot")
+@login_required
+def api_dashboard_snapshot():
+    try:
+        return {"ok":True,"snapshot":_dashboard_snapshot()}
+    except RuntimeError as exc:
+        if str(exc) == "SESSION_EXPIRED": return {"ok":False,"error":"SESSION_EXPIRED"},401
+        return {"ok":False,"error":"SYNC_FAILED"},502
+
+
+@app.before_request
+def hide_human_resources_module():
+    if request.path == "/hr" or request.path.startswith("/hr/"):
+        return redirect(url_for("dashboard"))
 
 
 @app.get("/cashier")
@@ -740,6 +786,7 @@ def user_username(user_id):
 
 
 
+@app.route("/cash-flow", methods=["GET", "POST"])
 @app.route("/finance", methods=["GET", "POST"])
 @login_required
 @csrf_checked
@@ -774,6 +821,18 @@ def finance():
                     "branch_id": branch_id, "name": name, "is_active": True
                 }, prefer="return=minimal")
                 flash("تم إضافة تصنيف المصروف.", "success")
+            elif action == "manual_income":
+                amount = Decimal(request.form.get("amount", "0").strip())
+                if not amount.is_finite() or amount <= 0: raise ValueError("أدخل مبلغًا صحيحًا أكبر من صفر.")
+                supabase_request("POST","rpc/create_manual_cash_in",payload={
+                    "p_cash_account_id":request.form.get("cash_account_id"),"p_amount":str(amount),
+                    "p_category":request.form.get("category","other_income"),
+                    "p_payment_method":request.form.get("payment_method","cash"),
+                    "p_customer_name":request.form.get("customer_name","").strip() or None,
+                    "p_invoice_id":request.form.get("invoice_id","").strip() or None,
+                    "p_note":request.form.get("notes","").strip() or None,
+                    "p_idempotency_key":request.form.get("idempotency_key") or secrets.token_urlsafe(24)})
+                flash("تم تسجيل Cash In بنجاح.","success")
             elif action == "expense":
                 amount = Decimal(request.form.get("amount", "0").strip())
                 if not amount.is_finite() or amount <= 0:
@@ -838,10 +897,14 @@ def finance():
             "select": "id,code,name,account_type,opening_balance,is_active",
             "branch_id": f"eq.{branch_id}", "order": "name.asc"
         })
-        transactions = supabase_rows("cash_transactions", {
-            "select": "id,cash_account_id,transaction_type,direction,amount,reference,description,created_at",
-            "branch_id": f"eq.{branch_id}", "order": "created_at.desc", "limit": "100"
-        })
+        start_date = date.fromisoformat(request.args.get("from", date.today().isoformat()))
+        end_date = date.fromisoformat(request.args.get("to", date.today().isoformat()))
+        if end_date < start_date or (end_date-start_date).days > 366: raise ValueError("اختار فترة صحيحة لا تتجاوز سنة.")
+        tz = ZoneInfo("Africa/Cairo")
+        cash_flow = supabase_request("POST","rpc/get_laundry_cash_flow",payload={
+            "p_from":datetime.combine(start_date,datetime.min.time(),tzinfo=tz).isoformat(),
+            "p_to":datetime.combine(end_date+timedelta(days=1),datetime.min.time(),tzinfo=tz).isoformat()})
+        transactions = (cash_flow or {}).get("transactions") or []
         balance_rows = supabase_request("POST", "rpc/get_laundry_cash_balances", payload={})
         categories = supabase_rows("expense_categories", {
             "select": "id,name,is_active", "branch_id": f"eq.{branch_id}", "order": "name.asc"
@@ -870,7 +933,8 @@ def finance():
     return render_template("finance.html", accounts=accounts, balances=balances,
                            categories=[c for c in categories if c.get("is_active")],
                            expenses=expenses, transactions=transactions,
-                           total_balance=total_balance)
+                           total_balance=total_balance, cash_flow=cash_flow or {},
+                           start_date=start_date.isoformat(), end_date=end_date.isoformat())
 
 
 @app.get("/reports")
