@@ -1,8 +1,58 @@
 {% extends 'base.html' %}{% block title %}Dashboard | OT Laundry{% endblock %}
 {% block content %}
-<div class="heading-row"><div><p class="eyebrow">OVERVIEW</p><h1>Dashboard</h1><p class="muted">Welcome, {{ profile.full_name }}. You are signed in.</p></div><span class="status-pill">Account Active</span></div>
-<div class="welcome-panel"><div><h2>Your account is connected to the OT Laundry database</h2><p>Catalog management and basic invoice creation are enabled. Cashier, invoice tracking, cash management, and reports are ready to use.</p></div><div class="panel-logo">OT</div></div>
-<div class="grid-cards"><a class="module-card" href="/users"><span class="module-icon">♙</span><b>User Management</b><small>Create accounts, assign roles, and manage account status</small></a><a class="module-card" href="/cashier"><span class="module-icon">▣</span><b>Cashier & Invoice Creation</b><small>Select garments and services and save intake invoices</small></a>
-<a class="module-card" href="/invoices"><span class="module-icon">▤</span><b>Invoice History</b><small>View invoices, details, and print receipts</small></a><a class="module-card" href="/catalog"><span class="module-icon">⚙</span><b>Catalog & Services</b><small>Manage departments, garments, services, prices, and cash accounts</small></a>
-<a class="module-card" href="/finance"><span class="module-icon">EGP</span><b>Cash & Expenses</b><small>Balances, collections, expenses, transfers, and cash ledger</small></a><a class="module-card" href="/cashier"><span class="module-icon">↗</span><b>Order Tracking</b><small>Monitor active orders, ready orders, and customer deliveries</small></a><a class="module-card" href="/reports"><span class="module-icon">▥</span><b>Reports & Dashboard</b><small>Revenue, collections, expenses, and workflow status by period</small></a></div>
+<div class="heading-row"><div><p class="eyebrow">TODAY AT A GLANCE</p><h1>Hello, {{ profile.full_name }}!</h1><p class="muted">{{ snapshot.date_label }} · Here is what is happening in your laundry.</p></div><a class="btn primary dashboard-new-order" href="/cashier">＋ New Order</a></div>
+<section class="dashboard-primary">
+  <article class="dash-card dash-sales"><span class="dash-icon">↗</span><small>Today's Sales</small><strong data-metric="sales">{{ '%.2f'|format(snapshot.sales) }} <em>EGP</em></strong></article>
+  <article class="dash-card dash-orders"><span class="dash-icon">▤</span><small>Orders Today</small><strong data-metric="orders">{{ snapshot.orders }}</strong></article>
+  <article class="dash-card dash-in"><span class="dash-icon">＋</span><small>Cash In</small><strong data-metric="cash_in">+{{ '%.2f'|format(snapshot.cash_in) }} <em>EGP</em></strong></article>
+  <article class="dash-card dash-out"><span class="dash-icon">−</span><small>Cash Out</small><strong data-metric="cash_out">−{{ '%.2f'|format(snapshot.cash_out) }} <em>EGP</em></strong></article>
+</section>
+<section class="dashboard-section">
+  <div class="section-heading"><div><p class="eyebrow">WORKFLOW</p><h2>Today's Work</h2></div><a href="/invoices">View all orders →</a></div>
+  <div class="workflow-cards">
+    <a href="/invoices?status=received" class="workflow-card"><span class="workflow-dot open"></span><small>Open</small><b data-metric="open">{{ snapshot.open }}</b></a>
+    <a href="/invoices?status=in_progress" class="workflow-card"><span class="workflow-dot progress"></span><small>In Progress</small><b data-metric="in_progress">{{ snapshot.in_progress }}</b></a>
+    <a href="/invoices?status=ready" class="workflow-card"><span class="workflow-dot ready"></span><small>Ready for Pickup</small><b data-metric="ready">{{ snapshot.ready }}</b></a>
+    <a href="/invoices?status=delivered" class="workflow-card"><span class="workflow-dot done"></span><small>Completed</small><b data-metric="completed">{{ snapshot.completed }}</b></a>
+  </div>
+</section>
+<section class="dashboard-section">
+  <div class="section-heading"><div><p class="eyebrow">CASH POSITION</p><h2>Cash Flow</h2></div><a href="/cash-flow">Open Cash Flow →</a></div>
+  <div class="net-cash-card"><div><small>Net Cash Flow Today</small><strong data-metric="net_cash">{{ '%.2f'|format(snapshot.net_cash) }} EGP</strong></div><div class="net-cash-note">Cash In minus Cash Out</div></div>
+</section>
+<section class="dashboard-section">
+  <div class="section-heading"><div><p class="eyebrow">LATEST ACTIVITY</p><h2>Recent Orders</h2></div><a href="/invoices">View All Orders →</a></div>
+  <div class="recent-order-list" id="recent-orders">
+  {% for order in snapshot.recent %}
+    <a class="recent-order" href="/invoices/{{ order.id }}"><span class="recent-order-number">#{{ order.invoice_number }}</span><span class="recent-order-customer">{{ order.customer_name_snapshot or 'Walk-in Customer' }}<small>{{ order.received_at[:16].replace('T',' ') }}</small></span><strong>{{ '%.2f'|format(order.total_amount|float) }} EGP</strong><span class="order-status-chip status-{{ order.status }}">{{ {'received':'Open','in_progress':'In Progress','ready':'Ready','delivered':'Completed','cancelled':'Cancelled'}.get(order.status,order.status) }}</span></a>
+  {% else %}<div class="dashboard-empty"><p>No orders yet. Create your first order.</p><a class="btn primary" href="/cashier">＋ New Order</a></div>{% endfor %}
+  </div>
+</section>
+<script>
+(()=>{
+ const status=document.getElementById('sync-status');
+ const money=n=>Number(n||0).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
+ let busy=false;
+ function esc(v){return String(v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+ async function sync(){
+   if(busy||document.hidden||!navigator.onLine)return;
+   busy=true;if(status)status.textContent='Syncing...';
+   try{
+     const r=await fetch('/api/dashboard-snapshot',{headers:{'Accept':'application/json'},cache:'no-store'});
+     if(!r.ok)throw new Error('sync');
+     const s=(await r.json()).snapshot;
+     const values={sales:money(s.sales)+' EGP',orders:s.orders,cash_in:'+'+money(s.cash_in)+' EGP',cash_out:'−'+money(s.cash_out)+' EGP',open:s.open,in_progress:s.in_progress,ready:s.ready,completed:s.completed,net_cash:money(s.net_cash)+' EGP'};
+     Object.entries(values).forEach(([k,v])=>{const el=document.querySelector('[data-metric="'+k+'"]');if(el)el.textContent=v});
+     const list=document.getElementById('recent-orders');
+     if(list){list.innerHTML=(s.recent||[]).map(o=>{const st=o.status||'received';const label={received:'Open',in_progress:'In Progress',ready:'Ready',delivered:'Completed',cancelled:'Cancelled'}[st]||st;return '<a class="recent-order" href="/invoices/'+encodeURIComponent(o.id)+'"><span class="recent-order-number">#'+String(o.invoice_number)+'</span><span class="recent-order-customer">'+esc(o.customer_name_snapshot||'Walk-in Customer')+'<small>'+esc((o.received_at||'').slice(0,16).replace('T',' '))+'</small></span><strong>'+money(o.total_amount)+' EGP</strong><span class="order-status-chip status-'+st+'">'+label+'</span></a>'}).join('')||'<div class="dashboard-empty"><p>No orders yet. Create your first order.</p><a class="btn primary" href="/cashier">＋ New Order</a></div>'}
+     if(status)status.textContent='✓ Synced';
+   }catch(e){if(status)status.textContent='Offline';}
+   finally{busy=false}
+ }
+ window.setInterval(sync,12000);
+ document.addEventListener('visibilitychange',()=>{if(!document.hidden)sync()});
+ window.addEventListener('online',sync);
+ window.addEventListener('offline',()=>{if(status)status.textContent='Offline'});
+})();
+</script>
 {% endblock %}
