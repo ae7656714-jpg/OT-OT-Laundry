@@ -933,6 +933,15 @@ def finance():
             "p_from":datetime.combine(start_date,datetime.min.time(),tzinfo=tz).isoformat(),
             "p_to":datetime.combine(end_date+timedelta(days=1),datetime.min.time(),tzinfo=tz).isoformat()})
         transactions = (cash_flow or {}).get("transactions") or []
+        selected_type = request.args.get("type", "")
+        selected_method = request.args.get("method", "")
+        selected_category = request.args.get("category", "")
+        if selected_type in ("in","out"):
+            transactions = [x for x in transactions if x.get("direction")==selected_type]
+        if selected_method:
+            transactions = [x for x in transactions if x.get("payment_method")==selected_method]
+        if selected_category:
+            transactions = [x for x in transactions if x.get("category")==selected_category]
         balance_rows = supabase_request("POST", "rpc/get_laundry_cash_balances", payload={})
         categories = supabase_rows("expense_categories", {
             "select": "id,name,is_active", "branch_id": f"eq.{branch_id}", "order": "name.asc"
@@ -963,6 +972,7 @@ def finance():
                            expenses=expenses, transactions=transactions,
                            total_balance=total_balance, cash_flow=cash_flow or {},
                            start_date=start_date.isoformat(), end_date=end_date.isoformat(),
+                           selected_type=selected_type, selected_method=selected_method, selected_category=selected_category,
                            idempotency_key=secrets.token_urlsafe(24))
 
 
