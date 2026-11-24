@@ -8,6 +8,13 @@ ALTER TABLE public.cash_transactions
   ADD COLUMN IF NOT EXISTS payment_method text,
   ADD COLUMN IF NOT EXISTS idempotency_key text;
 
+ALTER TABLE public.cash_transactions DROP CONSTRAINT IF EXISTS cash_transactions_transaction_type_check;
+ALTER TABLE public.cash_transactions ADD CONSTRAINT cash_transactions_transaction_type_check
+  CHECK (transaction_type = ANY (ARRAY[
+    'opening','invoice_payment','expense','payment_reversal','transfer_in','transfer_out',
+    'adjustment','salary_payment','employee_advance','advance_repayment','manual_income'
+  ]));
+
 CREATE UNIQUE INDEX IF NOT EXISTS cash_transactions_branch_idempotency_uidx
   ON public.cash_transactions(branch_id,idempotency_key)
   WHERE idempotency_key IS NOT NULL;
