@@ -3,7 +3,12 @@
 {% block content %}
 <div class="page-heading cashflow-heading"><div><span class="eyebrow">MONEY IN · MONEY OUT</span><h1>Cash Flow</h1><p>See what money came in, what went out, and what remains.</p></div></div>
 <form method="get" class="cashflow-filters panel">
-  <label>From<input type="date" name="from" value="{{ start_date }}"></label><label>To<input type="date" name="to" value="{{ end_date }}"></label><button class="btn primary">Apply Dates</button><a class="btn secondary" href="/cash-flow">Today</a>
+  <label>From<input type="date" name="from" value="{{ start_date }}"></label>
+  <label>To<input type="date" name="to" value="{{ end_date }}"></label>
+  <label>Type<select name="type"><option value="">All movements</option><option value="in" {% if selected_type=='in' %}selected{% endif %}>Cash In</option><option value="out" {% if selected_type=='out' %}selected{% endif %}>Cash Out</option></select></label>
+  <label>Payment Method<select name="method"><option value="">All methods</option><option value="cash" {% if selected_method=='cash' %}selected{% endif %}>Cash</option><option value="card" {% if selected_method=='card' %}selected{% endif %}>Card</option><option value="bank_transfer" {% if selected_method=='bank_transfer' %}selected{% endif %}>Bank Transfer</option><option value="wallet" {% if selected_method=='wallet' %}selected{% endif %}>Wallet</option><option value="other" {% if selected_method=='other' %}selected{% endif %}>Other</option></select></label>
+  <label>Category<select name="category"><option value="">All categories</option><option value="customer_advance" {% if selected_category=='customer_advance' %}selected{% endif %}>Customer Advance</option><option value="money_on_account" {% if selected_category=='money_on_account' %}selected{% endif %}>Money on Account</option><option value="owner_injection" {% if selected_category=='owner_injection' %}selected{% endif %}>Owner Injection</option><option value="previous_balance" {% if selected_category=='previous_balance' %}selected{% endif %}>Previous Balance</option><option value="other_income" {% if selected_category=='other_income' %}selected{% endif %}>Other Income</option></select></label>
+  <button class="btn primary">Apply Filters</button><a class="btn secondary" href="/cash-flow">Clear</a>
 </form>
 <section class="cashflow-summary">
   <article class="cashflow-card cashflow-in"><span class="cashflow-symbol">＋</span><small>Total Cash In</small><strong>+{{ '%.2f'|format(cash_flow.get('cash_in',0)|float) }} <em>EGP</em></strong></article>
