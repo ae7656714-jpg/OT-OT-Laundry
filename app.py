@@ -440,16 +440,23 @@ def invoices():
     profile = current_profile() or {}
     branch_id = profile.get("branch_id")
     try:
-        rows = supabase_rows(
-            "invoices",
-            {"select":"id,invoice_number,customer_name_snapshot,customer_phone_snapshot,status,subtotal,discount_amount,total_amount,received_at",
-             "branch_id":f"eq.{branch_id}","order":"received_at.desc","limit":"100"}
-        )
+        search = request.args.get("q", "").strip()[:80]
+        safe_search = "".join(ch for ch in search if ch.isalnum() or ch.isspace() or ch in "+-").strip()
+        query = {"select":"id,invoice_number,customer_name_snapshot,customer_phone_snapshot,status,subtotal,discount_amount,total_amount,received_at",
+                 "branch_id":f"eq.{branch_id}","order":"received_at.desc","limit":"500"}
+        if safe_search:
+            filters = [f"customer_name_snapshot.ilike.*{safe_search}*", f"customer_phone_snapshot.ilike.*{safe_search}*"]
+            if safe_search.isdigit(): filters.append(f"invoice_number.eq.{int(safe_search)}")
+            query["or"] = "(" + ",".join(filters) + ")"
+        selected_status = request.args.get("status", "")
+        if selected_status in ("received","in_progress","ready","delivered","cancelled"):
+            query["status"] = f"eq.{selected_status}"
+        rows = supabase_rows("invoices", query)
     except RuntimeError as exc:
         if str(exc) == "SESSION_EXPIRED":
             return redirect(url_for("logout"))
         abort(502, description="تعذر تحميل الفواتير.")
-    return render_template("invoices.html", invoices=rows)
+    return render_template("invoices.html", invoices=rows, search=safe_search, selected_status=selected_status)
 
 
 @app.get("/invoices/<invoice_id>/delivery-receipt")
