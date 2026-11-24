@@ -934,7 +934,8 @@ def finance():
                            categories=[c for c in categories if c.get("is_active")],
                            expenses=expenses, transactions=transactions,
                            total_balance=total_balance, cash_flow=cash_flow or {},
-                           start_date=start_date.isoformat(), end_date=end_date.isoformat())
+                           start_date=start_date.isoformat(), end_date=end_date.isoformat(),
+                           idempotency_key=secrets.token_urlsafe(24))
 
 
 @app.get("/reports")
