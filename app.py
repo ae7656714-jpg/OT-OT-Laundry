@@ -652,14 +652,14 @@ def _dashboard_snapshot():
     invoice_fields = "id,invoice_number,customer_name_snapshot,customer_phone_snapshot,status,total_amount,received_at"
     invoices = supabase_rows("invoices", {
         "select":invoice_fields,"branch_id":f"eq.{branch_id}",
-        "received_at":f"gte.{start.isoformat()}","received_at.lt":end.isoformat(),
+        "and":f"(received_at.gte.{start.isoformat()},received_at.lt.{end.isoformat()})",
         "order":"received_at.desc","limit":"500"})
     workflow = supabase_rows("invoices", {
         "select":"id,status","branch_id":f"eq.{branch_id}",
         "status":"in.(received,in_progress,ready)","limit":"1000"})
     delivered_today = supabase_rows("invoices", {
         "select":"id","branch_id":f"eq.{branch_id}","status":"eq.delivered",
-        "delivered_at":f"gte.{start.isoformat()}","delivered_at.lt":end.isoformat(),"limit":"500"})
+        "and":f"(delivered_at.gte.{start.isoformat()},delivered_at.lt.{end.isoformat()})","limit":"500"})
     recent = supabase_rows("invoices", {
         "select":invoice_fields,"branch_id":f"eq.{branch_id}",
         "order":"received_at.desc","limit":"5"})
