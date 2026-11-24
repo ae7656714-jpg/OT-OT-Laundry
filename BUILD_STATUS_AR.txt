@@ -1,0 +1,17 @@
+OT Laundry — حزمة المرحلتين 9 و13
+
+المرحلة 9:
+- تم تطبيق تغييرات قاعدة البيانات على مشروع Supabase الحالي.
+- تم اختبار حساب التأخير والإضافي والغياب وإنشاء مسير داخل معاملة تجريبية تم التراجع عنها.
+- تم التحقق من عدم بقاء سجلات QA بعد الاختبار.
+- تم فحص صلاحيات دوال RPC الجديدة: SECURITY INVOKER، التنفيذ authenticated فقط، ولا يوجد تنفيذ anon.
+
+المرحلة 13:
+- ملفات بناء Windows وPyInstaller وInno Setup موجودة في الحزمة.
+- BUILD_WINDOWS.bat يبني نسخة onedir ثم ينشئ مجلد Portable ويجمع Installer عند توفر Inno Setup 6.
+- لم يتم إنشاء ملفات EXE داخل بيئة التطوير الحالية لأنها Linux. يجب تشغيل BUILD_WINDOWS.bat على Windows 10/11 64-bit واختبار النسخ الناتجة قبل التوزيع.
+
+قبل التشغيل:
+- انسخ .env.example إلى ملف .env في مجلد بيانات التطبيق، ثم أدخل Supabase Publishable/anon key فقط.
+- لا تضع service_role أو secret key داخل التطبيق.
+- راجع docs/USER_GUIDE_AR.md.
