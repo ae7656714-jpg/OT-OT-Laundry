@@ -1013,8 +1013,13 @@ def reports():
     money = lambda value: Decimal(str(value or "0"))
     invoice_count = int(data.get("invoice_count") or 0)
     invoice_value = money(data.get("invoice_value"))
-    collected = money(data.get("collected"))
-    expense_total = money(data.get("expense_total"))
+    tz = ZoneInfo("Africa/Cairo")
+    cash_summary = supabase_request("POST","rpc/get_laundry_cash_flow",payload={
+        "p_from":datetime.combine(start_date,datetime.min.time(),tzinfo=tz).isoformat(),
+        "p_to":datetime.combine(end_date+timedelta(days=1),datetime.min.time(),tzinfo=tz).isoformat()
+    })
+    collected = money((cash_summary or {}).get("cash_in"))
+    expense_total = money((cash_summary or {}).get("cash_out"))
     net_cash = collected - expense_total
     payment_count = int(data.get("payment_count") or 0)
     expense_count = int(data.get("expense_count") or 0)
