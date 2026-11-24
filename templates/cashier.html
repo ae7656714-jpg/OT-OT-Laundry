@@ -2,8 +2,59 @@
 {% block content %}
 <div class="heading-row">
   <div><p class="eyebrow">QUICK POS</p><h1>Cashier & Order Intake</h1><p class="muted">Quick selection: choose a category, garment, then service.</p></div>
-  <a class="btn secondary" href="/invoices">Previous Invoices</a>
+  <a class="btn secondary" href="/invoices">Invoice History</a>
 </div>
+
+<section class="order-tracker panel">
+  <div class="tracker-heading">
+    <div><p class="eyebrow">LIVE ORDER TRACKING</p><h2>Order Status</h2><p class="muted">Follow every order from intake to customer collection.</p></div>
+    <span class="tracker-refresh">Live branch orders</span>
+  </div>
+  <div class="tracker-tabs" role="tablist" aria-label="Order status">
+    <button type="button" class="tracker-tab active" data-tracker-tab="active">Active Orders <span>{{ active_orders|length }}</span></button>
+    <button type="button" class="tracker-tab" data-tracker-tab="ready">Ready for Collection <span>{{ ready_orders|length }}</span></button>
+    <button type="button" class="tracker-tab" data-tracker-tab="closed">Closed Orders <span>{{ closed_orders|length }}</span></button>
+  </div>
+  <div class="tracker-pane active" data-tracker-pane="active">
+    {% if active_orders %}
+    <div class="tracker-list">
+      {% for order in active_orders %}
+      <a class="tracker-order" href="/invoices/{{ order.id }}">
+        <span class="tracker-order-main"><b>Order #{{ order.invoice_number }}</b><small>{{ order.customer_name_snapshot or 'Walk-in Customer' }} · {{ order.received_at[:16].replace('T',' ') }}</small></span>
+        <span class="tracker-stage"><i class="stage-dot {{ order.status }}"></i>{{ 'Received' if order.status == 'received' else 'In Progress' }}</span>
+        <span class="tracker-open">View Order →</span>
+      </a>
+      {% endfor %}
+    </div>
+    {% else %}<div class="tracker-empty">No active orders right now.</div>{% endif %}
+  </div>
+  <div class="tracker-pane" data-tracker-pane="ready" hidden>
+    {% if ready_orders %}
+    <div class="tracker-list">
+      {% for order in ready_orders %}
+      <a class="tracker-order" href="/invoices/{{ order.id }}">
+        <span class="tracker-order-main"><b>Order #{{ order.invoice_number }}</b><small>{{ order.customer_name_snapshot or 'Walk-in Customer' }} · {{ order.received_at[:16].replace('T',' ') }}</small></span>
+        <span class="tracker-stage ready"><i class="stage-dot ready"></i>Ready for Collection</span>
+        <span class="tracker-open">View Order →</span>
+      </a>
+      {% endfor %}
+    </div>
+    {% else %}<div class="tracker-empty">No orders waiting for collection.</div>{% endif %}
+  </div>
+  <div class="tracker-pane" data-tracker-pane="closed" hidden>
+    {% if closed_orders %}
+    <div class="tracker-list">
+      {% for order in closed_orders %}
+      <a class="tracker-order" href="/invoices/{{ order.id }}">
+        <span class="tracker-order-main"><b>Order #{{ order.invoice_number }}</b><small>{{ order.customer_name_snapshot or 'Walk-in Customer' }} · {{ order.received_at[:16].replace('T',' ') }}</small></span>
+        <span class="tracker-stage {{ 'cancelled' if order.status == 'cancelled' else 'delivered' }}">{{ 'Cancelled' if order.status == 'cancelled' else 'Delivered to Customer' }}</span>
+        <span class="tracker-open">View Order →</span>
+      </a>
+      {% endfor %}
+    </div>
+    {% else %}<div class="tracker-empty">No closed orders yet.</div>{% endif %}
+  </div>
+</section>
 <div class="notice info-line">Prices are verified against the database when saving. Item prices cannot be changed manually in the cashier.</div>
 <div class="cashier-layout">
   <section class="panel picker-panel">
@@ -121,6 +172,16 @@
    }catch(e){if(whatsappWindow && !whatsappWindow.closed)whatsappWindow.close();$('saveMessage').textContent=e.message||'An error occurred while saving.';btn.disabled=false;btn.textContent='Save Invoice';}
  });
  renderCart();
+})();
+</script>
+<script>
+(()=>{
+ const tabs=[...document.querySelectorAll('[data-tracker-tab]')];
+ const panes=[...document.querySelectorAll('[data-tracker-pane]')];
+ tabs.forEach(tab=>tab.addEventListener('click',()=>{
+   tabs.forEach(x=>x.classList.toggle('active',x===tab));
+   panes.forEach(p=>{const active=p.dataset.trackerPane===tab.dataset.trackerTab;p.hidden=!active;p.classList.toggle('active',active)});
+ }));
 })();
 </script>
 {% endblock %}
