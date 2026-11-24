@@ -653,11 +653,17 @@ def cashier():
         services = supabase_rows("services", {"select":"id,name,name_en,sort_order", "branch_id":f"eq.{branch_id}", "is_active":"eq.true", "order":"sort_order.asc,name.asc"})
         combinations = supabase_rows("garment_services", {"select":"id,garment_type_id,service_id,default_price", "branch_id":f"eq.{branch_id}", "is_available":"eq.true"})
         prices = supabase_rows("service_prices", {"select":"garment_service_id,price,effective_from,effective_to", "branch_id":f"eq.{branch_id}", "order":"effective_from.desc"})
+        invoice_fields = "id,invoice_number,customer_name_snapshot,status,total_amount,received_at"
+        active_orders = supabase_rows("invoices", {"select":invoice_fields, "branch_id":f"eq.{branch_id}", "status":"in.(received,in_progress)", "order":"received_at.desc", "limit":"50"})
+        ready_orders = supabase_rows("invoices", {"select":invoice_fields, "branch_id":f"eq.{branch_id}", "status":"eq.ready", "order":"received_at.desc", "limit":"50"})
+        closed_orders = supabase_rows("invoices", {"select":invoice_fields, "branch_id":f"eq.{branch_id}", "status":"in.(delivered,cancelled)", "order":"received_at.desc", "limit":"50"})
     except RuntimeError as exc:
         if str(exc) == "SESSION_EXPIRED":
             return redirect(url_for("logout"))
-        abort(502, description="تعذر تحميل الأصناف والخدمات. تأكد من الاتصال والصلاحيات.")
-    return render_template("cashier.html", categories=categories, garments=garments, services=services, combinations=combinations, prices=prices)
+        abort(502, description="تعذر تحميل الأصناف أو متابعة الطلبات. تأكد من الاتصال والصلاحيات.")
+    return render_template("cashier.html", categories=categories, garments=garments, services=services,
+                           combinations=combinations, prices=prices, active_orders=active_orders,
+                           ready_orders=ready_orders, closed_orders=closed_orders)
 
 
 @app.route("/users", methods=["GET", "POST"])
