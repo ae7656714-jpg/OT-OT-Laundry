@@ -16,7 +16,7 @@
   <div class="receipt-divider"></div>
   <h3>Delivered Items</h3>
   <table class="receipt-items"><thead><tr><th>Garment / Service</th><th>Qty</th><th>Total</th></tr></thead><tbody>
-  {% for item in items %}<tr><td><b>{{ item.garment_name_snapshot }}</b><small>{{ item.service_name_snapshot }}</small></td><td>{{ item.quantity }}</td><td>{{ '%.2f'|format(item.line_total|float) }}</td></tr>{% endfor %}
+  {% for item in items %}<tr><td><b>{{ item.garment_name_snapshot }}</b><small>{{ item.service_name_snapshot }}</small>{% if item.item_notes %}<small class="receipt-item-note">Note: {{ item.item_notes }}</small>{% endif %}</td><td>{{ item.quantity }}</td><td>{{ '%.2f'|format(item.line_total|float) }}</td></tr>{% endfor %}
   </tbody></table>
   <div class="receipt-divider"></div>
   <div class="receipt-summary"><div><span>Total Items</span><b>{{ quantity }}</b></div><div><span>Invoice Total</span><b>{{ '%.2f'|format(invoice.total_amount|float) }} EGP</b></div><div><span>Paid</span><b>{{ '%.2f'|format(paid) }} EGP</b></div><div class="receipt-balance"><span>Balance Due</span><b>{{ '%.2f'|format(balance) }} EGP</b></div></div>

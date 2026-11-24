@@ -123,7 +123,7 @@
  function renderCart(){
    const el=$('cartList');el.innerHTML='';
    if(!cart.length)el.innerHTML='<div class="empty">No items added yet</div>';
-   cart.forEach((it,i)=>{const row=document.createElement('div');row.className='cart-row';row.innerHTML=`<div><b>${esc(it.garment?.name||'Item')}</b>${it.garment?.name_en?`<small>${esc(it.garment.name_en)}</small>`:''}<small>${esc(it.service.name)}${it.service.name_en?' · '+esc(it.service.name_en):''} × ${it.quantity}</small></div><strong>${money(it.price*it.quantity)}</strong><button type="button" aria-label="Remove" title="Remove">×</button>`;row.querySelector('button').onclick=()=>{cart.splice(i,1);renderCart()};el.appendChild(row)});
+   cart.forEach((it,i)=>{const row=document.createElement('div');row.className='cart-row';row.innerHTML=`<div><b>${esc(it.garment?.name||'Item')}</b>${it.garment?.name_en?`<small>${esc(it.garment.name_en)}</small>`:''}<small>${esc(it.service.name)}${it.service.name_en?' · '+esc(it.service.name_en):''} × ${it.quantity}</small><textarea class="cart-item-note" rows="1" maxlength="250" placeholder="Item note (optional)">${esc(it.item_notes||'')}</textarea></div><strong>${money(it.price*it.quantity)}</strong><button type="button" aria-label="Remove" title="Remove">×</button>`;row.querySelector('textarea').addEventListener('input',e=>{it.item_notes=e.target.value});row.querySelector('button').onclick=()=>{cart.splice(i,1);renderCart()};el.appendChild(row)});
    const sub=cart.reduce((s,x)=>s+x.price*x.quantity,0),raw=Math.max(0,Number($('discount').value)||0);
    const disc=$('discountType').value==='percent'?Math.min(sub,sub*Math.min(100,raw)/100):Math.min(sub,raw);
    $('subtotal').textContent=money(sub);$('grandTotal').textContent=money(sub-disc);
@@ -157,7 +157,7 @@
        discount_type:$('discountType').value,discount_value:Number($('discount').value)||0,
        notes:$('invoiceNotes').value,
        idempotency_key:(requestKey||(requestKey=(crypto.randomUUID?crypto.randomUUID():String(Date.now())+'-'+Math.random().toString(36).slice(2)))),
-       items:cart.map(x=>({garment_type_id:x.garment_type_id,service_id:x.service_id,quantity:x.quantity}))
+       items:cart.map(x=>({garment_type_id:x.garment_type_id,service_id:x.service_id,quantity:x.quantity,item_notes:x.item_notes||''}))
      })});
      const result=await response.json();
      if(!response.ok)throw new Error(result.message||'Could not save the invoice');

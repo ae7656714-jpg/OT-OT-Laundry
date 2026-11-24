@@ -12,6 +12,7 @@ import hashlib
 import base64
 from pathlib import Path
 from datetime import date, timedelta, datetime, timezone
+from zoneinfo import ZoneInfo
 from decimal import Decimal, InvalidOperation
 from functools import wraps
 
@@ -386,8 +387,13 @@ def catalog():
                 supabase_request("POST","garment_categories",payload=payload,prefer="return=minimal")
             elif action == "garment":
                 payload = {"branch_id":branch_id,"category_id":request.form.get("category_id"),"name":request.form.get("name","").strip(),"name_en":request.form.get("name_en","").strip() or None,"icon_key":request.form.get("icon_key","laundry"),"is_active":True}
-                if not payload["category_id"] or not payload["name"]: raise ValueError("اختار القسم واكتب اسم القطعة.")
-                supabase_request("POST","garment_types",payload=payload,prefer="return=minimal")
+                service_id = request.form.get("service_id")
+                price = Decimal(request.form.get("price","0").strip())
+                if not payload["category_id"] or not payload["name"] or not service_id: raise ValueError("اختار القسم والخدمة واكتب اسم القطعة.")
+                if not price.is_finite() or price <= 0: raise ValueError("أدخل سعرًا أكبر من صفر.")
+                created = supabase_request("POST","garment_types",payload=payload,prefer="return=representation")
+                if not isinstance(created,list) or not created: raise RuntimeError("ITEM_CREATE_FAILED")
+                supabase_request("POST","garment_services",payload={"branch_id":branch_id,"garment_type_id":created[0]["id"],"service_id":service_id,"default_price":str(price),"is_available":True},prefer="return=minimal")
             elif action == "service":
                 payload = {"branch_id":branch_id,"name":request.form.get("name","").strip(),"name_en":request.form.get("name_en","").strip() or None,"is_active":True}
                 if not payload["name"]: raise ValueError("اكتب اسم الخدمة.")
@@ -422,10 +428,10 @@ def catalog():
             flash("تعذر الحفظ. تأكد من صلاحية إدارة الأصناف وأن البيانات غير مكررة.", "error")
         return redirect(url_for("catalog"))
     try:
-        categories=supabase_rows("garment_categories",{"select":"id,name,name_en,sort_order,is_active","branch_id":f"eq.{branch_id}","order":"sort_order.asc,name.asc"})
-        garments=supabase_rows("garment_types",{"select":"id,name,name_en,category_id,is_active,icon_key","branch_id":f"eq.{branch_id}","order":"name.asc"})
-        services=supabase_rows("services",{"select":"id,name,name_en,is_active","branch_id":f"eq.{branch_id}","order":"name.asc"})
-        combos=supabase_rows("garment_services",{"select":"id,garment_type_id,service_id,default_price,is_available","branch_id":f"eq.{branch_id}"})
+        categories=supabase_rows("garment_categories",{"select":"id,name,name_en,sort_order,is_active","branch_id":f"eq.{branch_id}","is_active":"eq.true","order":"sort_order.asc,name.asc"})
+        garments=supabase_rows("garment_types",{"select":"id,name,name_en,category_id,is_active,icon_key","branch_id":f"eq.{branch_id}","is_active":"eq.true","order":"name.asc"})
+        services=supabase_rows("services",{"select":"id,name,name_en,is_active","branch_id":f"eq.{branch_id}","is_active":"eq.true","order":"name.asc"})
+        combos=supabase_rows("garment_services",{"select":"id,garment_type_id,service_id,default_price,is_available","branch_id":f"eq.{branch_id}","is_available":"eq.true"})
         cash_accounts=supabase_rows("cash_accounts",{"select":"id,code,name,account_type,is_active","branch_id":f"eq.{branch_id}","order":"name.asc"})
     except RuntimeError as exc:
         if str(exc)=="SESSION_EXPIRED": return redirect(url_for("logout"))
@@ -439,16 +445,23 @@ def invoices():
     profile = current_profile() or {}
     branch_id = profile.get("branch_id")
     try:
-        rows = supabase_rows(
-            "invoices",
-            {"select":"id,invoice_number,customer_name_snapshot,customer_phone_snapshot,status,subtotal,discount_amount,total_amount,received_at",
-             "branch_id":f"eq.{branch_id}","order":"received_at.desc","limit":"100"}
-        )
+        search = request.args.get("q", "").strip()[:80]
+        safe_search = "".join(ch for ch in search if ch.isalnum() or ch.isspace() or ch in "+-").strip()
+        query = {"select":"id,invoice_number,customer_name_snapshot,customer_phone_snapshot,status,subtotal,discount_amount,total_amount,received_at",
+                 "branch_id":f"eq.{branch_id}","order":"received_at.desc","limit":"500"}
+        if safe_search:
+            filters = [f"customer_name_snapshot.ilike.*{safe_search}*", f"customer_phone_snapshot.ilike.*{safe_search}*"]
+            if safe_search.isdigit(): filters.append(f"invoice_number.eq.{int(safe_search)}")
+            query["or"] = "(" + ",".join(filters) + ")"
+        selected_status = request.args.get("status", "")
+        if selected_status in ("received","in_progress","ready","delivered","cancelled"):
+            query["status"] = f"eq.{selected_status}"
+        rows = supabase_rows("invoices", query)
     except RuntimeError as exc:
         if str(exc) == "SESSION_EXPIRED":
             return redirect(url_for("logout"))
         abort(502, description="تعذر تحميل الفواتير.")
-    return render_template("invoices.html", invoices=rows)
+    return render_template("invoices.html", invoices=rows, search=safe_search, selected_status=selected_status)
 
 
 @app.get("/invoices/<invoice_id>/delivery-receipt")
@@ -468,7 +481,7 @@ def delivery_receipt(invoice_id):
         if invoice.get("status") != "delivered":
             abort(409, description="إيصال التسليم متاح بعد تأكيد تسليم الفاتورة فقط.")
         items = supabase_rows("invoice_items", {
-            "select":"garment_name_snapshot,service_name_snapshot,quantity,unit_price,line_total",
+            "select":"garment_name_snapshot,service_name_snapshot,quantity,unit_price,line_total,item_notes",
             "invoice_id":f"eq.{invoice_id}", "branch_id":f"eq.{branch_id}", "order":"sort_order.asc"
         })
         payments = supabase_rows("payments", {
@@ -633,11 +646,66 @@ def api_create_invoice():
         return {"error":"INVOICE_CREATE_FAILED","message":"تعذر حفظ الفاتورة. راجع الأصناف والخدمات والصلاحيات ثم حاول مرة أخرى."}, 502
 
 
+def _dashboard_snapshot():
+    profile = current_profile() or {}
+    branch_id = profile.get("branch_id")
+    if not branch_id: raise RuntimeError("BRANCH_REQUIRED")
+    cairo = ZoneInfo("Africa/Cairo")
+    now = datetime.now(timezone.utc).astimezone(cairo)
+    start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    end = start + timedelta(days=1)
+    invoice_fields = "id,invoice_number,customer_name_snapshot,customer_phone_snapshot,status,total_amount,received_at"
+    invoices = supabase_rows("invoices", {
+        "select":invoice_fields,"branch_id":f"eq.{branch_id}",
+        "and":f"(received_at.gte.{start.isoformat()},received_at.lt.{end.isoformat()})",
+        "order":"received_at.desc","limit":"500"})
+    workflow = supabase_rows("invoices", {
+        "select":"id,status","branch_id":f"eq.{branch_id}",
+        "status":"in.(received,in_progress,ready)","limit":"1000"})
+    delivered_today = supabase_rows("invoices", {
+        "select":"id","branch_id":f"eq.{branch_id}","status":"eq.delivered",
+        "and":f"(delivered_at.gte.{start.isoformat()},delivered_at.lt.{end.isoformat()})","limit":"500"})
+    recent = supabase_rows("invoices", {
+        "select":invoice_fields,"branch_id":f"eq.{branch_id}",
+        "order":"received_at.desc","limit":"5"})
+    counts = {"received":0,"in_progress":0,"ready":0}
+    for row in workflow:
+        if row.get("status") in counts: counts[row["status"]] += 1
+    sales = sum(Decimal(str(x.get("total_amount") or "0")) for x in invoices if x.get("status") != "cancelled")
+    cash = supabase_request("POST","rpc/get_laundry_cash_flow",payload={"p_from":start.isoformat(),"p_to":end.isoformat()})
+    return {"date_label":now.strftime("%A, %d %B"),"sales":float(sales),"orders":len(invoices),
+        "open":counts["received"],"in_progress":counts["in_progress"],"ready":counts["ready"],"completed":len(delivered_today),
+        "cash_in":float((cash or {}).get("cash_in") or 0),"cash_out":float((cash or {}).get("cash_out") or 0),
+        "net_cash":float((cash or {}).get("net_cash") or 0),"recent":recent}
+
+
 @app.get("/")
 @login_required
 def dashboard():
     profile = current_profile() or {}
-    return render_template("dashboard.html", profile=profile)
+    try:
+        snapshot = _dashboard_snapshot()
+    except RuntimeError as exc:
+        if str(exc) == "SESSION_EXPIRED": return redirect(url_for("logout"))
+        if "FORBIDDEN" in str(exc) or "42501" in str(exc): abort(403)
+        abort(502, description="تعذر تحميل ملخص اليوم.")
+    return render_template("dashboard.html", profile=profile, snapshot=snapshot)
+
+
+@app.get("/api/dashboard-snapshot")
+@login_required
+def api_dashboard_snapshot():
+    try:
+        return {"ok":True,"snapshot":_dashboard_snapshot()}
+    except RuntimeError as exc:
+        if str(exc) == "SESSION_EXPIRED": return {"ok":False,"error":"SESSION_EXPIRED"},401
+        return {"ok":False,"error":"SYNC_FAILED"},502
+
+
+@app.before_request
+def hide_human_resources_module():
+    if request.path == "/hr" or request.path.startswith("/hr/"):
+        return redirect(url_for("dashboard"))
 
 
 @app.get("/cashier")
@@ -740,6 +808,7 @@ def user_username(user_id):
 
 
 
+@app.route("/cash-flow", methods=["GET", "POST"])
 @app.route("/finance", methods=["GET", "POST"])
 @login_required
 @csrf_checked
@@ -774,6 +843,18 @@ def finance():
                     "branch_id": branch_id, "name": name, "is_active": True
                 }, prefer="return=minimal")
                 flash("تم إضافة تصنيف المصروف.", "success")
+            elif action == "manual_income":
+                amount = Decimal(request.form.get("amount", "0").strip())
+                if not amount.is_finite() or amount <= 0: raise ValueError("أدخل مبلغًا صحيحًا أكبر من صفر.")
+                supabase_request("POST","rpc/create_manual_cash_in",payload={
+                    "p_cash_account_id":request.form.get("cash_account_id"),"p_amount":str(amount),
+                    "p_category":request.form.get("category","other_income"),
+                    "p_payment_method":request.form.get("payment_method","cash"),
+                    "p_customer_name":request.form.get("customer_name","").strip() or None,
+                    "p_invoice_id":request.form.get("invoice_id","").strip() or None,
+                    "p_note":request.form.get("notes","").strip() or None,
+                    "p_idempotency_key":request.form.get("idempotency_key") or secrets.token_urlsafe(24)})
+                flash("تم تسجيل Cash In بنجاح.","success")
             elif action == "expense":
                 amount = Decimal(request.form.get("amount", "0").strip())
                 if not amount.is_finite() or amount <= 0:
@@ -838,10 +919,29 @@ def finance():
             "select": "id,code,name,account_type,opening_balance,is_active",
             "branch_id": f"eq.{branch_id}", "order": "name.asc"
         })
-        transactions = supabase_rows("cash_transactions", {
-            "select": "id,cash_account_id,transaction_type,direction,amount,reference,description,created_at",
-            "branch_id": f"eq.{branch_id}", "order": "created_at.desc", "limit": "100"
-        })
+        try:
+            today_cairo = datetime.now(ZoneInfo("Africa/Cairo")).date()
+            start_date = date.fromisoformat(request.args.get("from", today_cairo.isoformat()))
+            end_date = date.fromisoformat(request.args.get("to", today_cairo.isoformat()))
+            if end_date < start_date or (end_date-start_date).days > 366:
+                raise ValueError()
+        except ValueError:
+            flash("اختار فترة صحيحة لا تتجاوز سنة.","error")
+            start_date = end_date = datetime.now(ZoneInfo("Africa/Cairo")).date()
+        tz = ZoneInfo("Africa/Cairo")
+        cash_flow = supabase_request("POST","rpc/get_laundry_cash_flow",payload={
+            "p_from":datetime.combine(start_date,datetime.min.time(),tzinfo=tz).isoformat(),
+            "p_to":datetime.combine(end_date+timedelta(days=1),datetime.min.time(),tzinfo=tz).isoformat()})
+        transactions = (cash_flow or {}).get("transactions") or []
+        selected_type = request.args.get("type", "")
+        selected_method = request.args.get("method", "")
+        selected_category = request.args.get("category", "")
+        if selected_type in ("in","out"):
+            transactions = [x for x in transactions if x.get("direction")==selected_type]
+        if selected_method:
+            transactions = [x for x in transactions if x.get("payment_method")==selected_method]
+        if selected_category:
+            transactions = [x for x in transactions if x.get("category")==selected_category]
         balance_rows = supabase_request("POST", "rpc/get_laundry_cash_balances", payload={})
         categories = supabase_rows("expense_categories", {
             "select": "id,name,is_active", "branch_id": f"eq.{branch_id}", "order": "name.asc"
@@ -870,7 +970,10 @@ def finance():
     return render_template("finance.html", accounts=accounts, balances=balances,
                            categories=[c for c in categories if c.get("is_active")],
                            expenses=expenses, transactions=transactions,
-                           total_balance=total_balance)
+                           total_balance=total_balance, cash_flow=cash_flow or {},
+                           start_date=start_date.isoformat(), end_date=end_date.isoformat(),
+                           selected_type=selected_type, selected_method=selected_method, selected_category=selected_category,
+                           idempotency_key=secrets.token_urlsafe(24))
 
 
 @app.get("/reports")
@@ -910,8 +1013,13 @@ def reports():
     money = lambda value: Decimal(str(value or "0"))
     invoice_count = int(data.get("invoice_count") or 0)
     invoice_value = money(data.get("invoice_value"))
-    collected = money(data.get("collected"))
-    expense_total = money(data.get("expense_total"))
+    tz = ZoneInfo("Africa/Cairo")
+    cash_summary = supabase_request("POST","rpc/get_laundry_cash_flow",payload={
+        "p_from":datetime.combine(start_date,datetime.min.time(),tzinfo=tz).isoformat(),
+        "p_to":datetime.combine(end_date+timedelta(days=1),datetime.min.time(),tzinfo=tz).isoformat()
+    })
+    collected = money((cash_summary or {}).get("cash_in"))
+    expense_total = money((cash_summary or {}).get("cash_out"))
     net_cash = collected - expense_total
     payment_count = int(data.get("payment_count") or 0)
     expense_count = int(data.get("expense_count") or 0)
