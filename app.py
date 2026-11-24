@@ -914,9 +914,15 @@ def finance():
             "select": "id,code,name,account_type,opening_balance,is_active",
             "branch_id": f"eq.{branch_id}", "order": "name.asc"
         })
-        start_date = date.fromisoformat(request.args.get("from", date.today().isoformat()))
-        end_date = date.fromisoformat(request.args.get("to", date.today().isoformat()))
-        if end_date < start_date or (end_date-start_date).days > 366: raise ValueError("اختار فترة صحيحة لا تتجاوز سنة.")
+        try:
+            today_cairo = datetime.now(ZoneInfo("Africa/Cairo")).date()
+            start_date = date.fromisoformat(request.args.get("from", today_cairo.isoformat()))
+            end_date = date.fromisoformat(request.args.get("to", today_cairo.isoformat()))
+            if end_date < start_date or (end_date-start_date).days > 366:
+                raise ValueError()
+        except ValueError:
+            flash("اختار فترة صحيحة لا تتجاوز سنة.","error")
+            start_date = end_date = datetime.now(ZoneInfo("Africa/Cairo")).date()
         tz = ZoneInfo("Africa/Cairo")
         cash_flow = supabase_request("POST","rpc/get_laundry_cash_flow",payload={
             "p_from":datetime.combine(start_date,datetime.min.time(),tzinfo=tz).isoformat(),
