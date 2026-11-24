@@ -469,7 +469,7 @@ def delivery_receipt(invoice_id):
         if invoice.get("status") != "delivered":
             abort(409, description="إيصال التسليم متاح بعد تأكيد تسليم الفاتورة فقط.")
         items = supabase_rows("invoice_items", {
-            "select":"garment_name_snapshot,service_name_snapshot,quantity,unit_price,line_total",
+            "select":"garment_name_snapshot,service_name_snapshot,quantity,unit_price,line_total,item_notes",
             "invoice_id":f"eq.{invoice_id}", "branch_id":f"eq.{branch_id}", "order":"sort_order.asc"
         })
         payments = supabase_rows("payments", {
