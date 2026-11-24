@@ -12,18 +12,18 @@
       <a class="brand" href="/"><span class="brand-mark">OT</span><span><b>OT Laundry</b><small>Laundry Management</small></span></a>
       <nav>
         <a href="/" class="{% if request.path == '/' %}active{% endif %}">▦ <span>Dashboard</span></a>
-        <a href="/cashier" class="{% if request.path == '/cashier' %}active{% endif %}">▣ <span>Cashier</span></a>
-        <a href="/invoices" class="{% if request.path.startswith('/invoices') %}active{% endif %}">▤ <span>Invoice History</span></a>
-        <a href="/catalog" class="{% if request.path == '/catalog' %}active{% endif %}">⚙ <span>Catalog & Services</span></a>
-        <a href="/finance" class="{% if request.path.startswith('/finance') %}active{% endif %}">▤ <span>Cash & Expenses</span></a>
+        <a href="/cashier" class="{% if request.path == '/cashier' %}active{% endif %}">▣ <span>New Order</span></a>
+        <a href="/invoices" class="{% if request.path.startswith('/invoices') %}active{% endif %}">▤ <span>Orders</span></a>
+        <a href="/catalog" class="{% if request.path == '/catalog' %}active{% endif %}">⚙ <span>Services</span></a>
+        <a href="/finance" class="{% if request.path.startswith('/finance') %}active{% endif %}">▤ <span>Cash Flow</span></a>
         <a href="/reports" class="{% if request.path.startswith('/reports') %}active{% endif %}">▥ <span>Reports</span></a>
-        <a href="/users" class="{% if request.path == '/users' %}active{% endif %}">♙ <span>Users</span></a>
+        <a href="/users" class="{% if request.path == '/users' %}active{% endif %}">♙ <span>Settings</span></a>
       </nav>
       <div class="side-bottom"><div class="user-mini"><span class="avatar">{{ current_profile.full_name[:1] }}</span><span><b>{{ current_profile.full_name }}</b><small>{{ current_profile.username }}</small></span></div><a class="logout" href="/logout">Log out ←</a></div>
     </aside>
     {% endif %}
     <main class="main {% if not current_profile %}main-auth{% endif %}">
-      {% if current_profile %}<header class="topbar"><span>Laundry Management System</span><span class="online"><i></i> Connected</span></header>{% endif %}
+      {% if current_profile %}<header class="topbar"><span>Laundry Management System</span><span class="online" id="sync-status"><i></i> Synced</span></header>{% endif %}
       <section class="page">
         {% with messages = get_flashed_messages(with_categories=true) %}{% for category,message in messages %}<div class="notice {{ category }}">{{ message }}</div>{% endfor %}{% endwith %}
         {% block content %}{% endblock %}
