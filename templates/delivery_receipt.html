@@ -1,0 +1,27 @@
+{% extends 'base.html' %}{% block title %}Delivery Receipt No. {{ invoice.invoice_number }} | OT Laundry{% endblock %}
+{% block content %}
+<div class="heading-row no-print">
+  <div><p class="eyebrow">DELIVERY RECEIPT</p><h1>Order Delivery Receipt #{{ invoice.invoice_number }}</h1><p class="muted">A separate receipt confirming that garments were handed to the customer.</p></div>
+  <div class="action-row"><button class="btn primary" onclick="window.print()">Print Delivery Receipt</button><a class="btn secondary" href="/invoices/{{ invoice.id }}">Back to Invoice</a></div>
+</div>
+<section class="panel delivery-receipt receipt-paper">
+  <header class="receipt-brand"><div class="brand-mark">OT</div><div><h2>OT Laundry</h2><p>Garment Delivery Receipt</p></div></header>
+  <div class="receipt-number"><span>Invoice Number</span><strong>#{{ invoice.invoice_number }}</strong></div>
+  <div class="receipt-info">
+    <div><small>Customer Name</small><b>{{ invoice.customer_name_snapshot }}</b></div>
+    <div><small>Phone Number</small><b>{{ invoice.customer_phone_snapshot or '—' }}</b></div>
+    <div><small>Received At</small><b>{{ invoice.received_at[:16].replace('T',' ') if invoice.received_at else '—' }}</b></div>
+    <div><small>Delivered At</small><b>{{ invoice.delivered_at[:16].replace('T',' ') if invoice.delivered_at else '—' }}</b></div>
+  </div>
+  <div class="receipt-divider"></div>
+  <h3>Delivered Items</h3>
+  <table class="receipt-items"><thead><tr><th>Garment / Service</th><th>Qty</th><th>Total</th></tr></thead><tbody>
+  {% for item in items %}<tr><td><b>{{ item.garment_name_snapshot }}</b><small>{{ item.service_name_snapshot }}</small></td><td>{{ item.quantity }}</td><td>{{ '%.2f'|format(item.line_total|float) }}</td></tr>{% endfor %}
+  </tbody></table>
+  <div class="receipt-divider"></div>
+  <div class="receipt-summary"><div><span>Total Items</span><b>{{ quantity }}</b></div><div><span>Invoice Total</span><b>{{ '%.2f'|format(invoice.total_amount|float) }} EGP</b></div><div><span>Paid</span><b>{{ '%.2f'|format(paid) }} EGP</b></div><div class="receipt-balance"><span>Balance Due</span><b>{{ '%.2f'|format(balance) }} EGP</b></div></div>
+  {% if invoice.notes %}<p class="receipt-note"><b>Notes:</b> {{ invoice.notes }}</p>{% endif %}
+  <div class="receipt-signatures"><div><span>Customer Signature</span><i></i></div><div><span>Staff Name</span><i></i></div></div>
+  <div class="receipt-thanks"><b>Thank you for choosing OT Laundry</b><small>Please check all items before leaving the branch.</small></div>
+</section>
+{% endblock %}

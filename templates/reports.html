@@ -1,0 +1,54 @@
+{% extends 'base.html' %}
+{% block title %}Reports & Dashboard | OT Laundry{% endblock %}
+{% block content %}
+<div class="page-heading report-heading"><div><span class="eyebrow">REPORTS & ANALYTICS</span><h1>Reports & Dashboard</h1><p>Operational and financial summary based on actual branch records.</p></div><button class="btn btn-secondary no-print" onclick="window.print()" type="button">Print Report</button></div>
+
+<section class="panel report-filter no-print">
+  <form method="get" class="report-filter-form">
+    <label>From Date<input type="date" name="from" value="{{ start_date }}" required></label>
+    <label>To Date<input type="date" name="to" value="{{ end_date }}" required></label>
+    <button class="btn btn-primary" type="submit">View Report</button>
+    <a class="btn btn-secondary" href="/reports">This Month</a>
+  </form>
+  <small class="form-hint">Maximum period: one year. Only posted collections and approved expenses are included.</small>
+</section>
+
+<div class="report-period-label">Period: {{ start_date }} to {{ end_date }}</div>
+<section class="report-kpis">
+  <article class="report-kpi"><span>Value of Non-Cancelled Invoices</span><strong>{{ '%.2f'|format(invoice_value) }} <small>EGP</small></strong><em>{{ invoice_count }} invoices during this period</em></article>
+  <article class="report-kpi"><span>Actual Collections</span><strong>{{ '%.2f'|format(collected) }} <small>EGP</small></strong><em>{{ payment_count }} recorded collection transactions</em></article>
+  <article class="report-kpi"><span>Approved Expenses</span><strong>{{ '%.2f'|format(expense_total) }} <small>EGP</small></strong><em>{{ expense_count }} Expense Approved</em></article>
+  <article class="report-kpi {{ 'positive' if net_cash >= 0 else 'negative' }}"><span>Net Collections After Expenses</span><strong>{{ '%.2f'|format(net_cash) }} <small>EGP</small></strong><em>Collections minus approved expenses</em></article>
+</section>
+
+<section class="panel report-panel">
+  <div class="panel-title"><div><span class="eyebrow">WORKFLOW</span><h2>Current Invoice Status</h2><p class="muted">All non-cancelled invoices in this branch, regardless of report period.</p></div></div>
+  <div class="workflow-report-grid">
+    {% for key,label in status_labels.items() if key != 'cancelled' %}
+    <div class="workflow-report-item"><span>{{ label }}</span><b>{{ pipeline_counts[key] }}</b></div>
+    {% endfor %}
+  </div>
+</section>
+
+<section class="panel report-panel">
+  <div class="panel-title"><div><span class="eyebrow">DAILY CASH FLOW</span><h2>Daily Collections & Expenses</h2><p class="muted">Bars compare collections and expenses for each day in the selected period.</p></div><div class="report-legend"><span><i class="legend-in"></i> Collections</span><span><i class="legend-out"></i> Expenses</span></div></div>
+  <div class="daily-report-list">
+    {% for day in daily_rows %}
+    <div class="daily-report-row">
+      <time>{{ day.date }}</time>
+      <div class="daily-bars"><div class="daily-bar-line"><i class="daily-bar collected" style="width:{{ day.collected_width }}%"></i></div><div class="daily-bar-line"><i class="daily-bar spent" style="width:{{ day.expenses_width }}%"></i></div></div>
+      <div class="daily-values"><span>{{ '%.2f'|format(day.collected) }}</span><span>{{ '%.2f'|format(day.expenses) }}</span></div>
+    </div>
+    {% endfor %}
+  </div>
+</section>
+
+<section class="panel report-panel">
+  <div class="panel-title"><div><span class="eyebrow">APPROVED EXPENSES</span><h2>Approved Expenses During Period</h2></div></div>
+  <div class="table-wrap"><table class="data-table"><thead><tr><th>Date</th><th>Expense No.</th><th>Description</th><th>Amount</th></tr></thead><tbody>
+  {% for expense in recent_expenses %}<tr><td>{{ expense.expense_date }}</td><td>#{{ expense.expense_number }}</td><td>{{ expense.description }}</td><td>{{ '%.2f'|format(expense.amount) }} EGP</td></tr>
+  {% else %}<tr><td colspan="4" class="empty-cell">No approved expenses in the selected period.</td></tr>{% endfor %}
+  </tbody></table></div>
+</section>
+<p class="report-disclaimer">Accounting Note: Invoice value is not the same as cash collected. Net collections equal posted collections minus approved expenses during the selected period. This is not accounting net profit because it excludes operating costs, wages, and other adjustments.</p>
+{% endblock %}

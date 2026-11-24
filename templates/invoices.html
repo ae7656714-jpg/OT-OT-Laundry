@@ -1,0 +1,11 @@
+{% extends 'base.html' %}{% block title %}Invoices | OT Laundry{% endblock %}
+{% block content %}
+<div class="heading-row"><div><p class="eyebrow">INVOICE REGISTER</p><h1>Invoice History</h1><p class="muted">The latest 100 invoices recorded in this branch.</p></div><a class="btn primary" href="/cashier">＋ New Invoice</a></div>
+<div class="panel table-panel">
+{% if invoices %}
+<div class="table-wrap"><table class="data-table"><thead><tr><th>Invoice Number</th><th>Customer</th><th>Date</th><th>Status</th><th>Total</th><th></th></tr></thead><tbody>
+{% for i in invoices %}<tr><td>#{{ i.invoice_number }}</td><td>{{ i.customer_name_snapshot }}<small>{{ i.customer_phone_snapshot or '' }}</small></td><td>{{ i.received_at[:16].replace('T',' ') }}</td><td>{{ {'received':'Received','in_progress':'In Progress','ready':'Ready','delivered':'Delivered','cancelled':'Cancelled'}.get(i.status,i.status) }}</td><td>{{ '%.2f'|format(i.total_amount|float) }} EGP</td><td><a href="/invoices/{{ i.id }}">View / Print</a></td></tr>{% endfor %}
+</tbody></table></div>
+{% else %}<div class="empty">No invoices recorded yet. Create your first invoice in the cashier.</div>{% endif %}
+</div>
+{% endblock %}

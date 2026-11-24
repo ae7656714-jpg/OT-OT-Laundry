@@ -1,0 +1,14 @@
+{% extends 'base.html' %}{% block title %}Sign In | OT Laundry{% endblock %}
+{% block content %}
+<div class="auth-wrap"><div class="auth-card">
+  <div class="logo-large">OT</div><p class="eyebrow">LAUNDRY MANAGEMENT SYSTEM</p>
+  <h1>Welcome to OT Laundry</h1><p class="muted">Sign in to continue to the laundry system</p>
+  {% if error %}<div class="notice error">{{ error }}</div>{% endif %}
+  <form method="post" class="form-stack"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label>Username<input name="username" required minlength="3" maxlength="32" autocomplete="username" placeholder="Enter your username"></label>
+    <label>Password<input type="password" name="password" required autocomplete="current-password" placeholder="Password"></label>
+    <button class="btn primary full">Sign In</button>
+  </form>
+  <a class="quiet-link" href="/first-setup">Set Up the First Administrator</a>
+</div></div>
+{% endblock %}

@@ -1,0 +1,126 @@
+{% extends 'base.html' %}{% block title %}Cashier | OT Laundry{% endblock %}
+{% block content %}
+<div class="heading-row">
+  <div><p class="eyebrow">QUICK POS</p><h1>Cashier & Order Intake</h1><p class="muted">Quick selection: choose a category, garment, then service.</p></div>
+  <a class="btn secondary" href="/invoices">Previous Invoices</a>
+</div>
+<div class="notice info-line">Prices are verified against the database when saving. Item prices cannot be changed manually in the cashier.</div>
+<div class="cashier-layout">
+  <section class="panel picker-panel">
+    <div class="step-head"><span class="step-no">1</span><div><b>Select a Category</b><small>Tap the category you need</small></div></div>
+    <div class="choice-row" id="categoryChoices">
+      {% for c in categories %}<button class="choice-chip" type="button" data-category-filter="{{ c.id }}"><b>{{ c.name_en or c.name }}</b>{% if c.name_en %}<small>{{ c.name }}</small>{% endif %}</button>{% endfor %}
+      {% if not categories %}<div class="empty compact">No categories found. <a href="/catalog">Open Catalog & Services to add them.</a></div>{% endif %}
+    </div>
+    <div class="step-head"><span class="step-no">2</span><div><b>Select a Garment</b><small>Garments are filtered by category</small></div></div>
+    <div class="garment-grid" id="garmentChoices">
+      {% for g in garments %}<button class="garment-tile" type="button" data-garment="{{ g.id }}" data-category="{{ g.category_id or '' }}"><span class="garment-icon">{{ {'shirt':'👔','pants':'👖','dress':'👗','coat':'🧥','blanket':'🛏️','jacket':'🧥','suit':'🤵','skirt':'👗','scarf':'🧣','linen':'🛏️','tie':'👔','vest':'🦺','linen':'🛏️'}.get(g.icon_key, '🧺') }}</span><b>{{ g.name_en or g.name }}</b>{% if g.name_en %}<small>{{ g.name }}</small>{% endif %}</button>{% endfor %}
+      {% if not garments %}<div class="empty compact">No garments are configured for this branch.</div>{% endif %}
+    </div>
+    <div class="step-head"><span class="step-no">3</span><div><b>Select a Service</b><small>Available services for the selected garment</small></div></div>
+    <div class="service-grid" id="serviceChoices"><div class="empty compact">Select a garment to view its services.</div></div>
+    <div class="quantity-row"><label>Quantity</label><div class="quantity-control"><button type="button" id="qtyMinus">−</button><strong id="qtyValue">1</strong><button type="button" id="qtyPlus">+</button></div><button type="button" class="btn primary" id="addItem" disabled>＋ Add to Order</button></div>
+  </section>
+  <aside class="panel order-panel">
+    <div class="panel-head"><h2>Current Order</h2><span class="count-pill" id="itemCount">0 items</span></div>
+    <div class="customer-fields">
+      <label>Customer Name<input id="customerName" maxlength="150" placeholder="Customer name (optional)"></label>
+      <label>Phone Number<input id="customerPhone" maxlength="30" inputmode="tel" placeholder="Phone number (optional)"></label>
+    </div>
+    <div class="cart-list" id="cartList"><div class="empty">No items added yet</div></div>
+    <div class="totals">
+      <div><span>Total</span><b id="subtotal">0.00 EGP</b></div>
+      <div class="discount-line"><label for="discountType">Discount Type</label><select id="discountType"><option value="value">Fixed Amount</option><option value="percent">Percentage</option></select></div>
+      <div class="discount-line"><label for="discount">Discount</label><input id="discount" type="number" min="0" step="0.01" value="0"></div>
+      <div class="grand-total"><span>Net</span><strong id="grandTotal">0.00 EGP</strong></div>
+    </div>
+    <label class="notes-label">Order Notes<textarea id="invoiceNotes" rows="2" maxlength="500" placeholder="Optional notes"></textarea></label>
+    <button type="button" class="btn primary full" id="saveInvoice" disabled>Save Invoice</button>
+    <p class="muted small-note" id="saveMessage">Add garments and services, then save the invoice.</p>
+  </aside>
+</div>
+<script id="catalog-data" type="application/json">{{ {'garments':garments,'services':services,'combinations':combinations,'prices':prices}|tojson }}</script>
+<script>
+(()=>{
+ const data=JSON.parse(document.getElementById('catalog-data').textContent);
+ const csrf={{ csrf_token()|tojson }};
+ const $=id=>document.getElementById(id);
+ let selectedGarment=null, selectedService=null, qty=1, cart=[], requestKey=null;
+ const money=n=>(Number(n)||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})+' EGP';
+ const esc=v=>String(v??'').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+ const serviceById=new Map(data.services.map(x=>[x.id,x]));
+ const garmentById=new Map(data.garments.map(x=>[x.id,x]));
+ const today=new Date().toISOString().slice(0,10);
+ const priceFor=combo=>{const p=data.prices.find(x=>x.garment_service_id===combo.id && x.effective_from<=today && (!x.effective_to || x.effective_to>=today));const raw=p?.price ?? combo.default_price;return raw===null || raw===undefined || raw==='' ? null : Number(raw)};
+ document.querySelectorAll('[data-category-filter]').forEach(b=>b.addEventListener('click',()=>{
+   document.querySelectorAll('.choice-chip').forEach(x=>x.classList.remove('selected'));b.classList.add('selected');
+   document.querySelectorAll('[data-garment]').forEach(g=>g.hidden=(g.dataset.category!==b.dataset.categoryFilter));
+   selectedGarment=null;selectedService=null;document.querySelectorAll('.garment-tile').forEach(x=>x.classList.remove('selected'));$('serviceChoices').innerHTML='<div class="empty compact">Select a garment.</div>';$('addItem').disabled=true;
+ }));
+ document.querySelectorAll('[data-garment]').forEach(b=>b.addEventListener('click',()=>{
+   document.querySelectorAll('.garment-tile').forEach(x=>x.classList.remove('selected'));b.classList.add('selected');
+   selectedGarment=b.dataset.garment;selectedService=null;$('addItem').disabled=true;
+   const combos=data.combinations.filter(x=>x.garment_type_id===selectedGarment);
+   $('serviceChoices').innerHTML='';
+   if(!combos.length){$('serviceChoices').innerHTML='<div class="empty compact">No services are linked to this garment.</div>';return;}
+   combos.forEach(c=>{const srv=serviceById.get(c.service_id);if(!srv)return;const price=priceFor(c);const btn=document.createElement('button');btn.type='button';btn.className='service-tile';btn.disabled=price===null;btn.innerHTML=`<b>${esc(srv.name_en||srv.name)}</b>${srv.name_en?`<small>${esc(srv.name_en)}</small>`:''}<strong>${price===null?'Price not set':money(price)}</strong>`;if(price===null){btn.title='Set the price in Catalog & Services first';}else{btn.addEventListener('click',()=>{document.querySelectorAll('.service-tile').forEach(x=>x.classList.remove('selected'));btn.classList.add('selected');selectedService={garment_type_id:selectedGarment,service_id:srv.id,combo_id:c.id,price,garment:garmentById.get(selectedGarment),service:srv};$('addItem').disabled=false;});}$('serviceChoices').appendChild(btn);});
+ }));
+ $('qtyMinus').onclick=()=>{qty=Math.max(1,qty-1);$('qtyValue').textContent=qty};
+ $('qtyPlus').onclick=()=>{qty=Math.min(99,qty+1);$('qtyValue').textContent=qty};
+ $('addItem').onclick=()=>{if(!selectedService)return;cart.push({...selectedService,quantity:qty});qty=1;$('qtyValue').textContent='1';renderCart();};
+ $('discount').addEventListener('input',renderCart);$('discountType').addEventListener('change',renderCart);
+ function renderCart(){
+   const el=$('cartList');el.innerHTML='';
+   if(!cart.length)el.innerHTML='<div class="empty">No items added yet</div>';
+   cart.forEach((it,i)=>{const row=document.createElement('div');row.className='cart-row';row.innerHTML=`<div><b>${esc(it.garment?.name||'Item')}</b>${it.garment?.name_en?`<small>${esc(it.garment.name_en)}</small>`:''}<small>${esc(it.service.name)}${it.service.name_en?' · '+esc(it.service.name_en):''} × ${it.quantity}</small></div><strong>${money(it.price*it.quantity)}</strong><button type="button" aria-label="Remove" title="Remove">×</button>`;row.querySelector('button').onclick=()=>{cart.splice(i,1);renderCart()};el.appendChild(row)});
+   const sub=cart.reduce((s,x)=>s+x.price*x.quantity,0),raw=Math.max(0,Number($('discount').value)||0);
+   const disc=$('discountType').value==='percent'?Math.min(sub,sub*Math.min(100,raw)/100):Math.min(sub,raw);
+   $('subtotal').textContent=money(sub);$('grandTotal').textContent=money(sub-disc);
+   $('itemCount').textContent=cart.reduce((s,x)=>s+x.quantity,0)+' items';$('saveInvoice').disabled=!cart.length;
+ }
+ $('saveInvoice').addEventListener('click',async()=>{
+   if(!cart.length)return;
+   const btn=$('saveInvoice');
+   let customerPhone=$('customerPhone').value.trim();
+   let openWhatsApp=true;
+   if(!customerPhone){
+     const entered=window.prompt('Customer phone number is missing. Enter a number to open WhatsApp after saving and printing, or cancel to continue without WhatsApp:');
+     if(entered===null){openWhatsApp=false;}
+     else if(!entered.trim()){
+       openWhatsApp=false;
+     }else{
+       customerPhone=entered.trim();$('customerPhone').value=customerPhone;
+     }
+   }
+   if(openWhatsApp && customerPhone.replace(/\D/g,'').length<8){
+     alert('Invalid phone number. Enter a valid number or cancel WhatsApp.');
+     $('customerPhone').focus();return;
+   }
+   // Pre-open a named tab during the click gesture so the browser does not block WhatsApp later.
+   let whatsappWindow=null;
+   if(openWhatsApp) whatsappWindow=window.open('about:blank','OTLaundryWhatsApp');
+   btn.disabled=true;btn.textContent='Saving invoice...';$('saveMessage').textContent='Verifying prices and saving the invoice...';
+   try{
+     const response=await fetch('/api/invoices',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':csrf},body:JSON.stringify({
+       customer_name:$('customerName').value,customer_phone:customerPhone,
+       discount_type:$('discountType').value,discount_value:Number($('discount').value)||0,
+       notes:$('invoiceNotes').value,
+       idempotency_key:(requestKey||(requestKey=(crypto.randomUUID?crypto.randomUUID():String(Date.now())+'-'+Math.random().toString(36).slice(2)))),
+       items:cart.map(x=>({garment_type_id:x.garment_type_id,service_id:x.service_id,quantity:x.quantity}))
+     })});
+     const result=await response.json();
+     if(!response.ok)throw new Error(result.message||'Could not save the invoice');
+     const invoiceId=result.invoice.invoice_id||result.invoice.id;
+     if(!invoiceId)throw new Error('The invoice was saved, but the server did not return its ID. Check Invoice History before retrying.');
+     const next=new URL('/invoices/'+encodeURIComponent(invoiceId),window.location.origin);
+     next.searchParams.set('auto_print','1');
+     if(openWhatsApp){next.searchParams.set('open_whatsapp','1');}
+     // Keep the pre-opened tab available to the invoice page for the WhatsApp hand-off.
+     if(whatsappWindow && !whatsappWindow.closed){try{whatsappWindow.document.title='OT Laundry';}catch(_){}}
+     location.href=next.pathname+next.search;
+   }catch(e){if(whatsappWindow && !whatsappWindow.closed)whatsappWindow.close();$('saveMessage').textContent=e.message||'An error occurred while saving.';btn.disabled=false;btn.textContent='Save Invoice';}
+ });
+ renderCart();
+})();
+</script>
+{% endblock %}

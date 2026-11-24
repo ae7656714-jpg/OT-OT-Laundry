@@ -1,0 +1,88 @@
+{% extends 'base.html' %}{% block title %}Invoice No. {{ invoice.invoice_number }} | OT Laundry{% endblock %}
+{% block content %}
+<div class="heading-row no-print"><div><p class="eyebrow">INVOICE DETAILS</p><h1>Invoice No. #{{ invoice.invoice_number }}</h1><p class="muted">Received at: {{ invoice.received_at[:16].replace('T',' ') }}</p></div><div class="action-row"><button class="btn primary" onclick="window.print()">Print Intake Receipt</button>{% if invoice.status == 'delivered' %}<a class="btn secondary" href="/invoices/{{ invoice.id }}/delivery-receipt">Delivery Receipt</a>{% endif %}<a class="btn secondary" href="/cashier">New Invoice</a></div></div>
+<div id="whatsapp-fallback" class="notice info-line no-print" hidden>
+  Invoice saved and print dialog opened. <a id="whatsapp-fallback-link" href="#" target="OTLaundryWhatsApp" rel="noopener">Click here to open WhatsApp with the prepared message</a>.
+</div>
+<section class="panel printable-invoice">
+<div class="print-brand"><div class="brand-mark">OT</div><div><h2>OT Laundry</h2><p>Garment Intake Receipt</p></div><strong>#{{ invoice.invoice_number }}</strong></div>
+<div class="invoice-meta"><div><small>Customer Name</small><b>{{ invoice.customer_name_snapshot }}</b></div><div><small>Phone Number</small><b>{{ invoice.customer_phone_snapshot or '—' }}</b></div><div><small>Date</small><b>{{ invoice.received_at[:16].replace('T',' ') }}</b></div><div><small>Status</small><b>{{ {'received':'Received','in_progress':'In Progress','ready':'Ready','delivered':'Delivered','cancelled':'Cancelled'}.get(invoice.status,invoice.status) }}</b></div></div>
+<div class="table-wrap"><table class="data-table"><thead><tr><th>Garment</th><th>Service</th><th>Quantity</th><th>Unit Price</th><th>Total</th></tr></thead><tbody>{% for item in items %}<tr><td>{{ item.garment_name_snapshot }}</td><td>{{ item.service_name_snapshot }}</td><td>{{ item.quantity }}</td><td>{{ '%.2f'|format(item.unit_price|float) }}</td><td>{{ '%.2f'|format(item.line_total|float) }}</td></tr>{% endfor %}</tbody></table></div>
+<div class="invoice-totals"><div><span>Total</span><b>{{ '%.2f'|format(invoice.subtotal|float) }} EGP</b></div><div><span>Discount</span><b>{{ '%.2f'|format(invoice.discount_amount|float) }} EGP</b></div><div class="grand-total"><span>Total Due</span><strong>{{ '%.2f'|format(invoice.total_amount|float) }} EGP</strong></div></div>
+{% if invoice.notes %}<p>Notes: {{ invoice.notes }}</p>{% endif %}<p class="print-footer">Thank you for choosing OT Laundry</p>
+</section>
+<section class="panel no-print" style="margin-top:18px"><div class="heading-row"><div><h2>Collections & Payments</h2><p class="muted">Paid: {{ '%.2f'|format(paid) }} EGP — Balance: {{ '%.2f'|format(balance) }} EGP</p></div></div>
+{% if balance > 0 and cash_accounts %}<form id="payment-form" class="form-grid"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><label>Payment Amount<input name="amount" type="number" min="0.01" max="{{ balance }}" step="0.01" required></label><label>Cash Account<select name="cash_account_id" required>{% for a in cash_accounts %}<option value="{{ a.id }}">{{ a.name }}</option>{% endfor %}</select></label><label>Payment Method<select name="payment_method"><option value="cash">Cash</option><option value="card">Card</option><option value="bank_transfer">Bank Transfer</option><option value="wallet">E-Wallet</option><option value="other">Other</option></select></label><label>Reference (optional)<input name="reference"></label><div class="form-actions"><button class="btn primary" type="submit">Record Payment</button></div></form><div id="payment-message" class="muted" role="status"></div>{% elif balance <= 0 %}<div class="notice success">This invoice has been paid in full.</div>{% else %}<div class="notice">Add an active cash account in Catalog & Services to record payments.</div>{% endif %}
+{% if payments %}<div class="table-wrap"><table class="data-table"><thead><tr><th>Receipt No.</th><th>Date</th><th>Method</th><th>Amount</th><th>Status</th></tr></thead><tbody>{% for p in payments %}<tr><td>{{ p.payment_number }}</td><td>{{ p.paid_at[:16].replace('T',' ') }}</td><td>{{ {'cash':'Cash','card':'Card','bank_transfer':'Bank Transfer','wallet':'E-Wallet','other':'Other'}.get(p.payment_method,p.payment_method) }}</td><td>{{ '%.2f'|format(p.amount|float) }} EGP</td><td>{{ 'Posted' if p.payment_status=='posted' else 'Reversed' }}</td></tr>{% endfor %}</tbody></table></div>{% endif %}
+</section>
+<section class="panel no-print" style="margin-top:18px">
+  <div class="heading-row"><div><h2>Workflow & Delivery</h2><p class="muted">The invoice cannot be delivered until all items are completed.</p></div><strong>{{ {'received':'Received','in_progress':'In Progress','ready':'Ready','delivered':'Delivered','cancelled':'Cancelled'}.get(invoice.status,invoice.status) }}</strong></div>
+  {% if invoice.status not in ['delivered','cancelled'] %}
+  <div class="table-wrap"><table class="data-table"><thead><tr><th>Garment</th><th>Service</th><th>Quantity</th><th>Work Status</th><th>Update Status</th></tr></thead><tbody>
+  {% for item in items %}<tr><td>{{ item.garment_name_snapshot }}</td><td>{{ item.service_name_snapshot }}</td><td>{{ item.quantity }}</td><td>{{ {'pending':'Pending','in_progress':'In Progress','completed':'Completed'}.get(item.work_status,item.work_status) }}</td><td><select class="work-status" data-item="{{ item.id }}"><option value="pending" {% if item.work_status=='pending' %}selected{% endif %}>Pending</option><option value="in_progress" {% if item.work_status=='in_progress' %}selected{% endif %}>In Progress</option><option value="completed" {% if item.work_status=='completed' %}selected{% endif %}>Completed</option></select><button class="btn secondary save-work" data-item="{{ item.id }}">Save</button></td></tr>{% endfor %}
+  </tbody></table></div>
+  {% if invoice.status == 'ready' %}<button id="deliver-invoice" class="btn primary">Confirm Customer Delivery</button>{% endif %}
+  <div id="workflow-message" class="muted" role="status"></div>
+  {% elif invoice.status=='delivered' %}<div class="notice success">Invoice delivered.</div><a class="btn primary" href="/invoices/{{ invoice.id }}/delivery-receipt">Print Delivery Receipt</a>{% endif %}
+  {% if status_history %}<h3 style="margin-top:20px">Status History</h3><div class="table-wrap"><table class="data-table"><thead><tr><th>Date</th><th>From</th><th>To</th><th>Notes</th></tr></thead><tbody>{% for h in status_history %}<tr><td>{{ h.changed_at[:16].replace('T',' ') }}</td><td>{{ h.old_status or '—' }}</td><td>{{ h.new_status }}</td><td>{{ h.reason or '—' }}</td></tr>{% endfor %}</tbody></table></div>{% endif %}
+</section>
+<script>
+(()=>{
+const csrf={{ csrf_token()|tojson }};const msg=document.getElementById('workflow-message');
+async function send(url,data){const r=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':csrf},body:JSON.stringify(data)});const j=await r.json();if(!r.ok)throw new Error(j.message||'Unable to complete the operation');return j}
+document.querySelectorAll('.save-work').forEach(b=>b.addEventListener('click',async()=>{const id=b.dataset.item;const sel=document.querySelector('.work-status[data-item="'+id+'"]');b.disabled=true;const allItemsWillBeReady=sel.value==='completed' && [...document.querySelectorAll('.work-status')].every(x=>x===sel || x.value==='completed');let readyTab=null;if(allItemsWillBeReady)readyTab=window.open('about:blank','OTLaundryReadyWhatsApp');if(msg)msg.textContent='Updating item status...';try{await send('/api/invoice-items/'+id+'/work-status',{work_status:sel.value});sessionStorage.setItem('ot-ready-notify:{{ invoice.id }}','1');location.reload()}catch(e){if(readyTab&&!readyTab.closed)readyTab.close();if(msg)msg.textContent=e.message;b.disabled=false}}));
+const deliver=document.getElementById('deliver-invoice');if(deliver)deliver.addEventListener('click',async()=>{deliver.disabled=true;if(msg)msg.textContent='Recording delivery...';try{await send('/api/invoices/{{ invoice.id }}/deliver',{});location.reload()}catch(e){if(msg)msg.textContent=e.message;deliver.disabled=false}});
+
+// Open a prepared WhatsApp message once when the invoice becomes ready.
+const readyKey='ot-ready-notify:{{ invoice.id }}';
+if('{{ invoice.status }}'==='ready' && sessionStorage.getItem(readyKey)==='1'){
+  sessionStorage.removeItem(readyKey);
+  let readyPhone={{ (invoice.customer_phone_snapshot or '')|tojson }};
+  if(!readyPhone.trim()) readyPhone=window.prompt('Customer phone number is missing. Enter the number to open WhatsApp with the ready-for-collection message:')||'';
+  let readyDigits=String(readyPhone).replace(/\D/g,'');
+  if(readyDigits.startsWith('00'))readyDigits=readyDigits.slice(2);else if(readyDigits.startsWith('0'))readyDigits='20'+readyDigits.slice(1);
+  if(readyDigits.length>=8){
+    const readyText=`Hello {{ (invoice.customer_name_snapshot or 'Customer')|e }}, your order #{{ invoice.invoice_number }} is now ready for collection at OT Laundry. You can visit us to collect your order. Thank you!`;
+    window.open(`https://wa.me/${readyDigits}?text=${encodeURIComponent(readyText)}`,'OTLaundryReadyWhatsApp');
+  }else if(readyPhone.trim()) alert('Invalid phone number. The order is ready, but WhatsApp could not be opened.');
+}
+
+// Cashier post-save flow: print the saved intake receipt, then open a prefilled WhatsApp chat.
+const params=new URLSearchParams(window.location.search);
+if(params.get('auto_print')==='1'){
+  const shouldWhatsApp=params.get('open_whatsapp')==='1';
+  const phone={{ (invoice.customer_phone_snapshot or '')|tojson }};
+  const invoiceNo={{ invoice.invoice_number|tojson }};
+  const customerName={{ (invoice.customer_name_snapshot or 'Dear Customer')|tojson }};
+  const total={{ (invoice.total_amount or 0)|float|tojson }};
+  const paid={{ paid|float|tojson }};
+  const balance={{ balance|float|tojson }};
+  const itemLines={{ items|map(attribute='garment_name_snapshot')|list|tojson }};
+  const qtyLines={{ items|map(attribute='quantity')|list|tojson }};
+  const digits=String(phone||'').replace(/\D/g,'');
+  let waNumber=digits;
+  if(waNumber.startsWith('00'))waNumber=waNumber.slice(2);
+  else if(waNumber.startsWith('0'))waNumber='20'+waNumber.slice(1);
+  const itemText=itemLines.map((name,i)=>`- ${name} × ${qtyLines[i]}`).join('\n');
+  const message=`Hello ${customerName},\nYour order has been received by OT Laundry.\nInvoice No.: #${invoiceNo}\nItems & Services:\n${itemText}\nInvoice Total: ${Number(total).toFixed(2)} EGP\nPaid: ${Number(paid).toFixed(2)} EGP\nBalance: ${Number(balance).toFixed(2)} EGP\nThank you for choosing OT Laundry.`;
+  const waUrl=shouldWhatsApp && waNumber.length>=8 ? `https://wa.me/${waNumber}?text=${encodeURIComponent(message)}` : '';
+  if(waUrl){
+    const link=document.getElementById('whatsapp-fallback-link');link.href=waUrl;
+    document.getElementById('whatsapp-fallback').hidden=false;
+  }
+  window.addEventListener('load',()=>{
+    window.setTimeout(()=>{
+      window.print();
+      if(waUrl){
+        // The named tab was opened from the original Save click; reuse it after printing.
+        const opened=window.open(waUrl,'OTLaundryWhatsApp');
+        if(!opened){document.getElementById('whatsapp-fallback').hidden=false;}
+      }
+      history.replaceState({},'',window.location.pathname);
+    },350);
+  },{once:true});
+}
+})();
+(()=>{const f=document.getElementById('payment-form');if(!f)return;f.addEventListener('submit',async e=>{e.preventDefault();const b=f.querySelector('button[type=submit]'),m=document.getElementById('payment-message');b.disabled=true;m.textContent='Recording payment...';const d=Object.fromEntries(new FormData(f).entries());d.idempotency_key=crypto.randomUUID();try{const r=await fetch('/api/invoices/{{ invoice.id }}/payments',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':d.csrf_token},body:JSON.stringify(d)});const j=await r.json();if(!r.ok)throw new Error(j.message||'تعذر Record Payment');m.textContent='تم Record Payment بنجاح. سيتم تحديث الرصيد.';location.reload()}catch(x){m.textContent=x.message;b.disabled=false}})})();
+</script>
+{% endblock %}

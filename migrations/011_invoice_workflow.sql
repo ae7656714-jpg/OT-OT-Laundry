@@ -1,0 +1,3 @@
+-- Applied to the OT-Laundry Supabase project as migration ot_laundry_invoice_workflow_v1.
+-- Tracks item completion, derives invoice status, and only allows delivery when all items are complete.
+-- See the database migration history for the authoritative applied SQL.

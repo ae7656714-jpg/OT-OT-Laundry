@@ -20,7 +20,7 @@ if not exist ".venv-build\Scripts\python.exe" (
 
 .venv-build\Scripts\python.exe -m pip install --upgrade pip
 if errorlevel 1 goto failed
-.venv-build\Scripts\python.exe -m pip install -r requirements.txt
+.venv-build\Scripts\python.exe -m pip install -r requirements-desktop.txt
 if errorlevel 1 goto failed
 
 .venv-build\Scripts\python.exe -m PyInstaller --noconfirm --clean --windowed --onedir --name OT-Laundry --collect-all webview --collect-all clr_loader --hidden-import waitress --hidden-import webview.platforms.edgechromium --add-data "templates;templates" --add-data "static;static" --add-data ".env.example;." desktop.py

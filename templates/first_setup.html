@@ -1,0 +1,12 @@
+{% extends 'base.html' %}{% block title %}Initial Setup | OT Laundry{% endblock %}
+{% block content %}
+<div class="auth-wrap"><div class="auth-card wide"><div class="logo-large">OT</div><h1>Initial Setup</h1><p class="muted">Create the system administrator and main branch for the first time only.</p>
+{% if error %}<div class="notice error">{{ error }}</div>{% endif %}
+<form method="post" class="form-stack"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+<label>Secure Setup Code<input name="bootstrap_code" type="password" required autocomplete="off"></label>
+<div class="two-col"><label>Administrator Full Name<input name="full_name" required maxlength="120"></label><label>Username<input name="username" required minlength="3" maxlength="32" pattern="[a-zA-Z0-9._-]+"></label></div>
+<label>Password<input name="password" type="password" required minlength="8" autocomplete="new-password"></label>
+<div class="two-col"><label>Branch Code<input name="branch_code" value="MAIN" required maxlength="20"></label><label>Branch Name<input name="branch_name" value="Main Branch" required maxlength="120"></label></div>
+<button class="btn primary full">Create First Administrator</button></form><a class="quiet-link" href="/login">Back to Sign In</a>
+</div></div>
+{% endblock %}

@@ -7,6 +7,9 @@ import secrets
 import time
 import sys
 import shutil
+import json
+import hashlib
+import base64
 from pathlib import Path
 from datetime import date, timedelta, datetime, timezone
 from decimal import Decimal, InvalidOperation
@@ -14,11 +17,14 @@ from functools import wraps
 
 import requests
 from flask import Flask, abort, flash, redirect, render_template, request, session, url_for
+from cryptography.fernet import Fernet, InvalidToken
 
 # RESOURCE_ROOT contains bundled templates/static files. APP_HOME is the folder
 # containing the executable when frozen, while APP_DATA is writable user data.
 RESOURCE_ROOT = Path(__file__).resolve().parent
 ROOT = RESOURCE_ROOT
+IS_VERCEL = os.getenv("VERCEL") == "1"
+
 if getattr(sys, "frozen", False):
     APP_HOME = Path(sys.executable).resolve().parent
     if (APP_HOME / "portable.flag").exists():
@@ -32,6 +38,9 @@ if getattr(sys, "frozen", False):
         example_env = RESOURCE_ROOT / ".env.example"
         if example_env.exists():
             shutil.copyfile(example_env, packaged_env)
+elif IS_VERCEL:
+    APP_HOME = RESOURCE_ROOT
+    INSTANCE = Path("/tmp/ot-laundry")
 else:
     APP_HOME = RESOURCE_ROOT
     INSTANCE = ROOT / "instance"
@@ -61,26 +70,36 @@ AUTH_FUNCTION_URL = os.getenv(
     f"{SUPABASE_URL}/functions/v1/ot-laundry-auth" if SUPABASE_URL else "",
 )
 
-key_file = INSTANCE / "session.key"
-if not key_file.exists():
-    key_file.write_text(secrets.token_urlsafe(48), encoding="utf-8")
-    try:
-        os.chmod(key_file, 0o600)
-    except OSError:
-        pass
+if IS_VERCEL:
+    app_secret = os.getenv("FLASK_SECRET_KEY", "")
+    if len(app_secret) < 32:
+        raise RuntimeError("FLASK_SECRET_KEY must be set to a stable random value (at least 32 characters) in Vercel.")
+else:
+    key_file = INSTANCE / "session.key"
+    if not key_file.exists():
+        key_file.write_text(secrets.token_urlsafe(48), encoding="utf-8")
+        try:
+            os.chmod(key_file, 0o600)
+        except OSError:
+            pass
+    app_secret = key_file.read_text(encoding="utf-8").strip()
 
 app = Flask(__name__, template_folder=str(RESOURCE_ROOT / "templates"), static_folder=str(RESOURCE_ROOT / "static"))
-app.secret_key = key_file.read_text(encoding="utf-8").strip()
+app.secret_key = app_secret
 app.config.update(
     SESSION_COOKIE_HTTPONLY=True,
-    SESSION_COOKIE_SAMESITE="Strict",
-    SESSION_COOKIE_SECURE=False,  # local loopback HTTP only
+    SESSION_COOKIE_SAMESITE="Lax" if IS_VERCEL else "Strict",
+    SESSION_COOKIE_SECURE=IS_VERCEL,
+    SESSION_COOKIE_NAME="ot_laundry_session",
     PERMANENT_SESSION_LIFETIME=60 * 60 * 8,
     MAX_CONTENT_LENGTH=1024 * 1024,
+    SESSION_REFRESH_EACH_REQUEST=False,
 )
 
-# Tokens stay in process memory, never in the browser cookie.
-AUTH_SESSIONS: dict[str, dict] = {}
+# Supabase tokens are encrypted before being placed in Flask's signed cookie.
+_session_fernet_key = base64.urlsafe_b64encode(hashlib.sha256(app_secret.encode("utf-8")).digest())
+SESSION_CIPHER = Fernet(_session_fernet_key)
+
 HTTP = requests.Session()
 HTTP.headers.update({"User-Agent": "OT-Laundry-Desktop/0.1"})
 
@@ -105,18 +124,24 @@ def csrf_token() -> str:
 
 @app.context_processor
 def inject_globals():
-    return {"csrf_token": csrf_token, "current_profile": current_profile()}
+    return {"csrf_token": csrf_token, "current_profile": current_profile(), "is_vercel": IS_VERCEL}
+
+
+def store_auth(auth: dict) -> None:
+    raw = json.dumps(auth, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+    session["ot_auth_blob"] = SESSION_CIPHER.encrypt(raw).decode("ascii")
 
 
 def current_auth() -> dict | None:
-    sid = session.get("ot_sid")
-    if not sid:
+    blob = session.get("ot_auth_blob")
+    if not blob:
         return None
-    auth = AUTH_SESSIONS.get(sid)
-    if not auth:
-        session.pop("ot_sid", None)
+    try:
+        auth = json.loads(SESSION_CIPHER.decrypt(blob.encode("ascii")).decode("utf-8"))
+        return auth if isinstance(auth, dict) else None
+    except (InvalidToken, ValueError, TypeError, UnicodeDecodeError):
+        session.pop("ot_auth_blob", None)
         return None
-    return auth
 
 
 def current_profile() -> dict | None:
@@ -189,15 +214,13 @@ def login():
             data, status = function_call({"action": "login", "username": username, "password": password})
             if status == 200 and data.get("session") and data.get("profile"):
                 auth_data = data["session"]
-                sid = secrets.token_urlsafe(36)
-                AUTH_SESSIONS[sid] = {
+                session.clear()
+                store_auth({
                     "access_token": auth_data.get("access_token"),
                     "refresh_token": auth_data.get("refresh_token"),
                     "expires_at": time.time() + int(auth_data.get("expires_in", 3600)),
                     "profile": data["profile"],
-                }
-                session.clear()
-                session["ot_sid"] = sid
+                })
                 session["csrf_token"] = secrets.token_urlsafe(32)
                 session.permanent = True
                 return redirect(url_for("dashboard"))
@@ -229,15 +252,13 @@ def first_setup():
         data, status = function_call(payload)
         if status == 200 and data.get("session") and data.get("profile"):
             auth_data = data["session"]
-            sid = secrets.token_urlsafe(36)
-            AUTH_SESSIONS[sid] = {
+            session.clear()
+            store_auth({
                 "access_token": auth_data.get("access_token"),
                 "refresh_token": auth_data.get("refresh_token"),
                 "expires_at": time.time() + int(auth_data.get("expires_in", 3600)),
                 "profile": data["profile"],
-            }
-            session.clear()
-            session["ot_sid"] = sid
+            })
             session["csrf_token"] = secrets.token_urlsafe(32)
             session.permanent = True
             return redirect(url_for("dashboard"))
@@ -272,6 +293,7 @@ def active_access_token() -> str | None:
                 "refresh_token": data.get("refresh_token", refresh_token),
                 "expires_at": time.time() + int(data.get("expires_in", 3600)),
             })
+            store_auth(auth)
             return auth["access_token"]
     except (requests.RequestException, ValueError):
         pass
@@ -1279,9 +1301,6 @@ def hr_payroll_detail(period_id):
 
 @app.get("/logout")
 def logout():
-    sid = session.pop("ot_sid", None)
-    if sid:
-        AUTH_SESSIONS.pop(sid, None)
     session.clear()
     return redirect(url_for("login"))
 

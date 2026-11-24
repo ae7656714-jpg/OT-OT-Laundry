@@ -1,0 +1,20 @@
+{% extends 'base.html' %}{% block title %}User Management | OT Laundry{% endblock %}
+{% block content %}
+<div class="heading-row"><div><p class="eyebrow">ACCESS CONTROL</p><h1>User Management</h1><p class="muted">Create team accounts and manage access permissions.</p></div><span class="count-pill">{{ users|length }} Account</span></div>
+<div class="content-grid">
+<section class="panel"><h2>Add New User</h2><form method="post" class="form-stack"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+<label>Full Name<input name="full_name" required maxlength="120" placeholder="Staff Name"></label>
+<label>Username<input name="username" required minlength="3" maxlength="32" pattern="[a-zA-Z0-9._-]+" placeholder="Example: ahmed.ops"><small>English letters, numbers, and . _ - only; 3 to 32 characters.</small></label>
+<label>Temporary Password<input type="password" name="password" required minlength="8" autocomplete="new-password"><small>At least 8 characters.</small></label>
+<label>Role<select name="role_code" required><option value="">Select a role</option>{% for role in roles %}<option value="{{ role.code }}">{{ role.name }}</option>{% endfor %}</select></label>
+{% if branches|length > 1 %}<label>Branch<select name="branch_id" required>{% for branch in branches %}<option value="{{ branch.id }}">{{ branch.name }} — {{ branch.code }}</option>{% endfor %}</select></label>{% elif branches|length == 1 %}<input type="hidden" name="branch_id" value="{{ branches[0].id }}"><div class="info-line">Branch: {{ branches[0].name }}</div>{% endif %}
+<button class="btn primary full">Create Account</button></form></section>
+<section class="panel"><div class="panel-head"><h2>User Accounts</h2><span class="muted">Accounts within your access scope</span></div>
+<div class="table-wrap"><table><thead><tr><th>User</th><th>Role</th><th>Status</th><th>Actions</th></tr></thead><tbody>
+{% for u in users %}<tr><td><b>{{ u.full_name }}</b><small class="block">{{ u.username }}</small></td><td>{% for ur in u.user_roles or [] %}{{ ur.roles.name if ur.roles else '—' }}{% if not loop.last %}{% endif %}{% endfor %}</td><td><span class="state {{ 'on' if u.is_active else 'off' }}">{{ 'Active' if u.is_active else 'Disabled' }}</span></td><td class="actions">
+<form method="post" action="/users/{{ u.id }}/status"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="is_active" value="{{ '0' if u.is_active else '1' }}"><button class="text-btn" {% if current_profile.id == u.id %}disabled title="You cannot disable your current account"{% endif %}>{{ 'Disable' if u.is_active else 'Enable' }}</button></form>
+<details class="mini-edit"><summary>Edit</summary><div class="mini-pop"><form method="post" action="/users/{{ u.id }}/username"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><label>Username<input name="username" required value="{{ u.username }}"></label><button class="btn secondary">Save Username</button></form><form method="post" action="/users/{{ u.id }}/password"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><label>New Password<input name="password" type="password" required minlength="8" placeholder="At least 8 characters"></label><button class="btn secondary">Change Password</button></form></div></details>
+</td></tr>{% else %}<tr><td colspan="4" class="empty">No users yet.</td></tr>{% endfor %}
+</tbody></table></div></section>
+</div>
+{% endblock %}
