@@ -67,7 +67,7 @@ SUPABASE_URL = os.getenv("SUPABASE_URL", "").rstrip("/")
 SUPABASE_PUBLISHABLE_KEY = os.getenv("SUPABASE_PUBLISHABLE_KEY", "")
 AUTH_FUNCTION_URL = os.getenv(
     "OT_LAUNDRY_AUTH_URL",
-    f"{SUPABASE_URL}/functions/v1/ot-laundry-auth" if SUPABASE_URL else "",
+    f"{SUPABASE_URL}/functions/v1/quick-processor" if SUPABASE_URL else "",
 )
 
 if IS_VERCEL:
