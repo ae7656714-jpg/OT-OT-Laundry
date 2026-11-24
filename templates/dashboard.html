@@ -1,6 +1,6 @@
 {% extends 'base.html' %}{% block title %}Dashboard | OT Laundry{% endblock %}
 {% block content %}
-<div class="heading-row"><div><p class="eyebrow">TODAY AT A GLANCE</p><h1>Hello, {{ profile.full_name }}!</h1><p class="muted">{{ snapshot.date_label }} · Here is what is happening in your laundry.</p></div><a class="btn primary dashboard-new-order" href="/cashier">＋ New Order</a></div>
+<div class="heading-row"><div><p class="eyebrow">TODAY AT A GLANCE</p><h1>Hello, {{ profile.full_name }}!</h1><p class="muted">{{ snapshot.date_label }} · Here is what is happening in your laundry.</p></div><div class="dashboard-quick-actions"><a class="btn primary dashboard-new-order" href="/cashier">＋ New Order</a><a class="btn secondary" href="/cash-flow">＋ Cash In / Cash Out</a><a class="btn secondary" href="/invoices?status=received">View Open Orders</a></div></div>
 <section class="dashboard-primary">
   <article class="dash-card dash-sales"><span class="dash-icon">↗</span><small>Today's Sales</small><strong data-metric="sales">{{ '%.2f'|format(snapshot.sales) }} <em>EGP</em></strong></article>
   <article class="dash-card dash-orders"><span class="dash-icon">▤</span><small>Orders Today</small><strong data-metric="orders">{{ snapshot.orders }}</strong></article>
